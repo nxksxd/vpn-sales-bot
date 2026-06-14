@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  vpn-bot:
+    build: .
+    container_name: vpn-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - bot-data:/app/data
+      - bot-logs:/app/logs
+    networks:
+      - vpn-net
+
+  # Optional: PostgreSQL database (uncomment for production)
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: vpn-bot-db
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: vpn_bot
+  #     POSTGRES_PASSWORD: your_db_password
+  #     POSTGRES_DB: vpn_bot
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - vpn-net
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U vpn_bot"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+volumes:
+  bot-data:
+  bot-logs:
+  # postgres-data:
+
+networks:
+  vpn-net:
+    driver: bridge
