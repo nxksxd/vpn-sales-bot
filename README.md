@@ -46,14 +46,26 @@
 
 ## Быстрый старт
 
-### 1. Клонирование
+### Автоматическая установка (рекомендуется)
 
 ```bash
-git clone https://github.com/anten-ka/goVLESS.git
-cd goVLESS/vpn_bot
+git clone https://github.com/nxksxd/vpn-sales-bot.git
+cd vpn-sales-bot
+bash setup.sh
 ```
 
-### 2. Установка зависимостей
+Скрипт сам спросит все необходимые параметры, создаст `.env` и запустит бота через Docker.
+
+### Ручная установка
+
+#### 1. Клонирование
+
+```bash
+git clone https://github.com/nxksxd/vpn-sales-bot.git
+cd vpn-sales-bot
+```
+
+#### 2. Установка зависимостей
 
 ```bash
 python3 -m venv venv
@@ -61,20 +73,20 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Конфигурация
+#### 3. Конфигурация
 
 ```bash
 cp .env.example .env
 nano .env  # заполните BOT_TOKEN, ADMIN_TELEGRAM_ID, XUI_* параметры
 ```
 
-### 4. Запуск
+#### 4. Запуск
 
 ```bash
 python -m bot.main
 ```
 
-### Docker
+#### Docker (ручной)
 
 ```bash
 cp .env.example .env
