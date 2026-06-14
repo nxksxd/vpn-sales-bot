@@ -1,10 +1,51 @@
-"""User-facing inline keyboards."""
+"""User-facing inline keyboards and persistent reply keyboard."""
 
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 from bot.config import settings
+
+
+# ── Persistent reply keyboard (always visible at bottom) ───────────
+
+MENU_BTN_PROFILE = "\U0001f48e Мой профиль"
+MENU_BTN_SUBS = "\U0001f511 Мои подписки"
+MENU_BTN_BUY = "\U0001f6d2 Купить подписку"
+MENU_BTN_TOPUP = "\U0001f4b0 Пополнить баланс"
+MENU_BTN_KEY = "\U0001f510 Мой ключ"
+MENU_BTN_SUPPORT = "\U0001f198 Поддержка"
+MENU_BTN_GUIDE = "\U0001f4d6 Инструкция"
+MENU_BTN_REF = "\U0001f465 Реферальная программа"
+
+MENU_BUTTONS_MAP = {
+    MENU_BTN_PROFILE: "u:profile",
+    MENU_BTN_SUBS: "u:subs",
+    MENU_BTN_BUY: "u:buy",
+    MENU_BTN_TOPUP: "u:topup",
+    MENU_BTN_KEY: "sub:show_key",
+    MENU_BTN_SUPPORT: "u:support",
+    MENU_BTN_GUIDE: "u:guide",
+    MENU_BTN_REF: "u:ref",
+}
+
+
+def persistent_menu_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=MENU_BTN_PROFILE), KeyboardButton(text=MENU_BTN_KEY)],
+            [KeyboardButton(text=MENU_BTN_BUY), KeyboardButton(text=MENU_BTN_TOPUP)],
+            [KeyboardButton(text=MENU_BTN_SUBS), KeyboardButton(text=MENU_BTN_GUIDE)],
+            [KeyboardButton(text=MENU_BTN_REF), KeyboardButton(text=MENU_BTN_SUPPORT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 
 
 def main_menu_kb() -> InlineKeyboardMarkup:
