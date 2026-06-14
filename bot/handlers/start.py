@@ -11,6 +11,7 @@ from bot.database.session import async_session_factory
 from bot.database.repositories.user import UserRepository
 from bot.keyboards.user_kb import (
     MENU_BUTTONS_MAP,
+    main_menu_kb,
     persistent_menu_kb,
 )
 from bot.keyboards.admin_kb import admin_main_kb
@@ -20,14 +21,14 @@ from bot.services.referral import ReferralService
 router = Router(name="start")
 
 WELCOME_TEXT = (
-    "\U0001f510 <b>Портальный ключ</b>\n\n"
-    "Добро пожаловать! Здесь вы можете приобрести подписку "
+    "\U0001f510 <b>VPN Bot</b>\n\n"
+    "Добро пожаловать! Здесь вы можете приобрести VPN-подписку "
     "и получить быстрый и безопасный доступ к интернету.\n\n"
     "Выберите действие:"
 )
 
 WELCOME_ADMIN_TEXT = (
-    "\U0001f510 <b>Портальный ключ — Админ-панель</b>\n\n"
+    "\U0001f510 <b>VPN Bot — Админ-панель</b>\n\n"
     "Добро пожаловать, администратор!\n\n"
     "Выберите действие:"
 )
@@ -67,19 +68,23 @@ async def cmd_start(message: Message, bot: Bot) -> None:
                             balance=str(referrer.balance + settings.referral_bonus_stars),
                         )
 
+    # Send persistent reply keyboard
+    await message.answer(
+        "\u2328\ufe0f Клавиатура активирована",
+        reply_markup=persistent_menu_kb(),
+    )
+
     if is_admin(user.id):
-        # Admin gets persistent keyboard + admin inline panel
         await message.answer(
             WELCOME_ADMIN_TEXT,
             parse_mode="HTML",
             reply_markup=admin_main_kb(),
         )
     else:
-        # Regular user gets only persistent reply keyboard (no inline duplicates)
         await message.answer(
             WELCOME_TEXT,
             parse_mode="HTML",
-            reply_markup=persistent_menu_kb(),
+            reply_markup=main_menu_kb(),
         )
 
 
@@ -92,7 +97,7 @@ async def cb_main_menu(call: CallbackQuery) -> None:
         kb = admin_main_kb()
     else:
         text = WELCOME_TEXT
-        kb = None  # regular users use persistent reply keyboard
+        kb = main_menu_kb()
 
     if call.message is not None:
         try:
@@ -202,7 +207,7 @@ async def handle_menu_button(message: Message, bot: Bot) -> None:
             active = await sub_repo.get_active_by_user(user.id)
             if active is None or not active.vless_link:
                 await message.answer(
-                    "\u274c У вас нет активного ключа.\n"
+                    "\u274c У вас нет активного ключа VPN.\n"
                     "Купите подписку чтобы получить ключ.",
                     parse_mode="HTML",
                     reply_markup=back_to_menu_kb(),
@@ -210,7 +215,7 @@ async def handle_menu_button(message: Message, bot: Bot) -> None:
             else:
                 msg = (
                     "\U0001f511 <b>Ваш ключ VLESS</b>\n\n"
-                    "Скопируйте ссылку ниже и вставьте в приложение:\n\n"
+                    "Скопируйте ссылку ниже и вставьте в VPN-клиент:\n\n"
                     f"{code(active.vless_link)}\n\n"
                     "\U0001f4f1 <i>Нажмите на ссылку чтобы скопировать</i>"
                 )
