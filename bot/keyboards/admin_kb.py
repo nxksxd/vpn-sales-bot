@@ -141,6 +141,20 @@ def admin_broadcast_kb() -> InlineKeyboardMarkup:
     )
 
 
+def admin_xui_settings_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="\U0001f310 Изменить URL", callback_data="adm:set:xui_url")],
+            [InlineKeyboardButton(text="\U0001f464 Изменить логин", callback_data="adm:set:xui_username")],
+            [InlineKeyboardButton(text="\U0001f511 Изменить пароль", callback_data="adm:set:xui_password")],
+            [InlineKeyboardButton(text="\U0001f4e1 Изменить Inbound ID", callback_data="adm:set:xui_inbound_id")],
+            [InlineKeyboardButton(text="\U0001f5a5 Изменить адрес сервера", callback_data="adm:set:server_address")],
+            [InlineKeyboardButton(text="\U0001f50d Проверить подключение", callback_data="adm:set:test")],
+            [InlineKeyboardButton(text="\u00ab Настройки", callback_data="adm:settings")],
+        ]
+    )
+
+
 def user_list_nav_kb(page: int, total_pages: int) -> InlineKeyboardMarkup:
     nav = []
     if page > 0:
