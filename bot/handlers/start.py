@@ -126,11 +126,12 @@ async def handle_menu_button(message: Message, bot: Bot) -> None:
         back_to_menu_kb,
         buy_plan_kb,
         guide_kb,
+        renew_plan_kb,
         subscription_kb,
         topup_kb,
     )
     from bot.services.referral import ReferralService
-    from bot.utils.formatters import code, esc, fmt_date, fmt_stars
+    from bot.utils.formatters import code, days_until, esc, fmt_date, fmt_plan, fmt_stars, pluralize_days
 
     async with async_session_factory() as session:
         user_repo = UserRepository(session)
@@ -183,11 +184,24 @@ async def handle_menu_button(message: Message, bot: Bot) -> None:
                 )
 
         elif callback_data == "u:buy":
-            await message.answer(
-                "\U0001f6d2 <b>Выберите план подписки:</b>",
-                parse_mode="HTML",
-                reply_markup=buy_plan_kb(),
-            )
+            sub_repo = SubscriptionRepository(session)
+            active = await sub_repo.get_active_by_user(user.id)
+            if active:
+                remaining = days_until(active.expires_at)
+                await message.answer(
+                    "\U0001f504 <b>Продление подписки</b>\n\n"
+                    f"У вас уже есть активная подписка (<b>{fmt_plan(active.plan_type)}</b>, "
+                    f"осталось <b>{pluralize_days(remaining)}</b>).\n\n"
+                    "Выберите период продления:",
+                    parse_mode="HTML",
+                    reply_markup=renew_plan_kb(),
+                )
+            else:
+                await message.answer(
+                    "\U0001f6d2 <b>Выберите план подписки:</b>",
+                    parse_mode="HTML",
+                    reply_markup=buy_plan_kb(),
+                )
 
         elif callback_data == "u:topup":
             await message.answer(

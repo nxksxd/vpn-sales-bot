@@ -76,22 +76,38 @@ async def cb_buy_menu(call: CallbackQuery) -> None:
     await call.answer()
     async with async_session_factory() as session:
         user_repo = UserRepository(session)
+        sub_repo = SubscriptionRepository(session)
         db_user = await user_repo.get_by_telegram_id(call.from_user.id)
+        active = await sub_repo.get_active_by_user(call.from_user.id)
 
     balance = db_user.balance if db_user else 0
-    text = (
-        "\U0001f6d2 <b>Купить подписку</b>\n\n"
-        f"\U0001f4b0 Ваш баланс: <b>{fmt_stars(balance)}</b>\n\n"
-        "Выберите тариф:"
-    )
+
+    if active:
+        remaining = days_until(active.expires_at)
+        text = (
+            "\U0001f504 <b>Продление подписки</b>\n\n"
+            f"У вас уже есть активная подписка (<b>{fmt_plan(active.plan_type)}</b>, "
+            f"осталось <b>{pluralize_days(remaining)}</b>).\n\n"
+            f"\U0001f4b0 Ваш баланс: <b>{fmt_stars(balance)}</b>\n\n"
+            "Выберите период продления:"
+        )
+        kb = renew_plan_kb()
+    else:
+        text = (
+            "\U0001f6d2 <b>Купить подписку</b>\n\n"
+            f"\U0001f4b0 Ваш баланс: <b>{fmt_stars(balance)}</b>\n\n"
+            "Выберите тариф:"
+        )
+        kb = buy_plan_kb()
+
     if call.message:
         try:
             await call.message.edit_text(
-                text, parse_mode="HTML", reply_markup=buy_plan_kb()
+                text, parse_mode="HTML", reply_markup=kb
             )
         except Exception:
             await call.message.answer(
-                text, parse_mode="HTML", reply_markup=buy_plan_kb()
+                text, parse_mode="HTML", reply_markup=kb
             )
 
 
