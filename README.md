@@ -1,160 +1,180 @@
-# Портальный ключ — @portalkey_bot
+# VPN Sales Bot
 
-Telegram-бот для продажи подписок через Telegram Stars с интеграцией 3x-ui панели.
+Полностью автоматизированный Telegram-бот для продажи VPN-подписок через Telegram Stars с интеграцией 3x-ui панели.
 
 ## Возможности
 
-### Пользователь
-- Пополнение баланса через Telegram Stars
-- Покупка подписки (1 / 3 / 6 / 12 месяцев)
-- Получение VLESS-ключа (ссылка + QR-код)
-- Автопродление и напоминания
-- Реферальная программа
-- Инструкции подключения (Android, iOS, Windows, macOS, Linux)
+### Для пользователей
+- **Регистрация** — автоматическая при первом /start
+- **Пополнение баланса** — через Telegram Stars (100, 250, 500, 1000 ⭐ или произвольная сумма)
+- **Покупка подписки** — 1/3/6/12 месяцев со скидками
+- **Просмотр ключа VLESS** — текстовая ссылка + QR-код
+- **Продление подписки** — автоматическое продление в 3x-ui
+- **Реферальная программа** — бонусы за приглашённых пользователей
+- **Инструкции по подключению** — для Android, iOS, Windows, macOS, Linux
 
-### Администратор
-- Управление пользователями, ключами и подписками
-- Статистика и рассылки
-- Изменение настроек 3x-ui прямо из Telegram
-- Статус сервера
+### Для администратора
+- **Полный CRUD** по пользователям (поиск, просмотр карточки, баланс)
+- **Управление ключами** — пересоздание, деактивация, активация, сброс трафика
+- **Управление подписками** — продление, отмена, изменение даты
+- **Статистика** — пользователи, подписки, доход по периодам
+- **Рассылки** — всем, активным подписчикам, с истекающей подпиской
+- **Изменение баланса** — пополнение/списание Stars
+- **Бан/разбан** пользователей
+- **Отправка сообщений** пользователям
+- **Статус сервера** — ping до 3x-ui, количество онлайн клиентов
 
 ### Автоматизация
-- Напоминания о продлении (за 3 и 1 день)
-- Деактивация истёкших подписок (каждые 15 мин)
-- Синхронизация с 3x-ui (каждые 6 часов)
-- Ежедневный отчёт администратору
+- **Напоминания** о продлении (за 3 дня и 1 день)
+- **Деактивация** истёкших подписок (каждые 15 минут)
+- **Синхронизация** с 3x-ui (каждые 6 часов)
+- **Ежедневный отчёт** администратору (09:00 UTC)
 
----
+## Стек технологий
 
-## Установка на VPS
+| Компонент | Технология |
+|-----------|------------|
+| Bot Framework | aiogram 3.x |
+| HTTP Client | aiohttp |
+| ORM | SQLAlchemy 2.x (async) |
+| Migrations | Alembic |
+| Scheduler | APScheduler |
+| Config | Pydantic Settings |
+| QR | qrcode + Pillow |
+| Database | SQLite (dev) / PostgreSQL (prod) |
+| Logging | Loguru |
 
-### Требования
+## Быстрый старт
 
-- VPS с Ubuntu 20.04+ (или Debian 11+)
-- Docker и Docker Compose
-- Установленная панель 3x-ui с настроенным VLESS inbound
-- Telegram-бот (создать через [@BotFather](https://t.me/BotFather))
-
-### 1. Установка Docker (если ещё не установлен)
+### Автоматическая установка (рекомендуется)
 
 ```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-# Перезайдите в SSH-сессию после этого
+git clone https://github.com/nxksxd/vpn-sales-bot.git
+cd vpn-sales-bot
+bash setup.sh
 ```
 
-### 2. Клонирование репозитория
+Скрипт сам спросит все необходимые параметры, создаст `.env` и запустит бота через Docker.
+
+### Ручная установка
+
+#### 1. Клонирование
 
 ```bash
 git clone https://github.com/nxksxd/vpn-sales-bot.git
 cd vpn-sales-bot
 ```
 
-### 3. Автоматическая настройка (рекомендуется)
+#### 2. Установка зависимостей
 
 ```bash
-bash setup.sh
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-Скрипт спросит все параметры, создаст `.env` и запустит бота.
-
-### 4. Ручная настройка (альтернативно)
+#### 3. Конфигурация
 
 ```bash
 cp .env.example .env
-nano .env
+nano .env  # заполните BOT_TOKEN, ADMIN_TELEGRAM_ID, XUI_* параметры
 ```
 
-Заполните обязательные поля:
-
-| Параметр | Описание | Пример |
-|----------|----------|--------|
-| `BOT_TOKEN` | Токен от @BotFather | `123456:ABC...` |
-| `ADMIN_TELEGRAM_ID` | Ваш Telegram ID (узнать: [@userinfobot](https://t.me/userinfobot)) | `448795617` |
-| `XUI_URL` | Адрес панели 3x-ui | `https://your-server:2053` |
-| `XUI_USERNAME` | Логин от панели | `admin` |
-| `XUI_PASSWORD` | Пароль от панели | `your_password` |
-| `XUI_INBOUND_ID` | ID inbound (см. в панели → Inbounds) | `1` |
-| `SERVER_ADDRESS` | IP или домен сервера | `your-server.com` |
-
-Затем запустите:
+#### 4. Запуск
 
 ```bash
-docker compose up -d --build
+python -m bot.main
 ```
 
----
-
-## Управление ботом
+#### Docker (ручной)
 
 ```bash
-# Логи (в реальном времени)
-docker compose logs -f vpn-bot
-
-# Перезапуск
-docker compose restart
-
-# Остановка
-docker compose down
-
-# Обновление
-git pull
-docker compose up -d --build
+cp .env.example .env
+# Заполните .env
+docker-compose up -d
 ```
-
-## Автозапуск после перезагрузки сервера
-
-Docker автоматически запускает контейнер при перезагрузке сервера благодаря `restart: always` в `docker-compose.yml`.
-
-Убедитесь, что Docker сам запускается при загрузке:
-
-```bash
-sudo systemctl enable docker
-```
-
----
-
-## Настройки тарифов
-
-Цены задаются в `.env` файле (в Telegram Stars):
-
-| Параметр | По умолчанию | Описание |
-|----------|-------------|----------|
-| `PLAN_1M_STARS` | 100 | 1 месяц |
-| `PLAN_3M_STARS` | 250 | 3 месяца |
-| `PLAN_6M_STARS` | 450 | 6 месяцев |
-| `PLAN_12M_STARS` | 800 | 12 месяцев |
-| `TRAFFIC_LIMIT_GB` | 0 | Лимит трафика (0 = безлимит) |
-| `REFERRAL_BONUS_STARS` | 10 | Бонус за реферала |
-
-Настройки 3x-ui можно менять прямо из Telegram: `/admin` → Настройки.
-
----
 
 ## Структура проекта
 
 ```
+vpn_bot/
 ├── bot/
-│   ├── main.py              # Точка входа
-│   ├── config.py            # Настройки (Pydantic Settings)
-│   ├── handlers/            # Обработчики команд
-│   │   ├── start.py         # /start, главное меню
-│   │   ├── balance.py       # Пополнение баланса
-│   │   ├── payments.py      # Обработка Stars-платежей
-│   │   ├── subscriptions.py # Подписки
-│   │   ├── keys.py          # Ключи VLESS + QR
-│   │   └── admin/           # Админ-панель
-│   ├── services/            # Бизнес-логика
-│   │   ├── xui_client.py    # 3x-ui API клиент
-│   │   └── subscription.py  # Логика подписок
-│   ├── database/            # ORM-модели и CRUD
-│   └── scheduler/           # Фоновые задачи
-├── setup.sh                 # Интерактивная установка
+│   ├── main.py                 # Точка входа
+│   ├── config.py               # Настройки (Pydantic Settings)
+│   ├── handlers/
+│   │   ├── start.py            # /start, главное меню
+│   │   ├── profile.py          # Профиль пользователя
+│   │   ├── balance.py          # Пополнение баланса
+│   │   ├── payments.py         # Обработка Stars платежей
+│   │   ├── subscriptions.py    # Покупка/просмотр подписок
+│   │   ├── keys.py             # Управление ключами + QR
+│   │   ├── referral.py         # Реферальная система
+│   │   ├── support.py          # Поддержка + инструкции
+│   │   └── admin/
+│   │       ├── main.py         # Админ-меню
+│   │       ├── users.py        # CRUD пользователей
+│   │       ├── keys.py         # Управление ключами
+│   │       ├── stats.py        # Статистика
+│   │       ├── broadcast.py    # Рассылки
+│   │       └── settings.py     # Настройки + статус сервера
+│   ├── keyboards/
+│   │   ├── user_kb.py          # Клавиатуры пользователя
+│   │   └── admin_kb.py         # Клавиатуры админа
+│   ├── middlewares/
+│   │   ├── auth.py             # Проверка бана
+│   │   ├── throttling.py       # Rate limiting
+│   │   └── admin_check.py      # Проверка админа
+│   ├── services/
+│   │   ├── xui_client.py       # 3x-ui API клиент
+│   │   ├── subscription.py     # Логика подписок
+│   │   ├── payment.py          # Логика платежей
+│   │   ├── notification.py     # Уведомления
+│   │   ├── qr_generator.py     # QR-коды
+│   │   └── referral.py         # Реферальная логика
+│   ├── database/
+│   │   ├── models.py           # SQLAlchemy модели
+│   │   ├── session.py          # Сессии БД
+│   │   └── repositories/       # CRUD операции
+│   ├── scheduler/
+│   │   └── tasks.py            # Фоновые задачи
+│   └── utils/
+│       ├── formatters.py       # Форматирование
+│       └── validators.py       # Валидация
+├── migrations/                  # Alembic
+├── .env.example
 ├── docker-compose.yml
 ├── Dockerfile
-└── requirements.txt
+├── requirements.txt
+└── README.md
 ```
 
-## Стек
+## База данных
 
-aiogram 3 · SQLAlchemy 2 (async) · APScheduler · aiohttp · Pydantic Settings · SQLite/PostgreSQL · Docker
+### Таблицы
+
+- **users** — пользователи (telegram_id, balance, referral_code, is_banned)
+- **subscriptions** — подписки (plan_type, status, expires_at, xui_client_id)
+- **transactions** — все финансовые операции (topup, purchase, refund, admin_adjustment)
+- **vpn_keys** — ключи VPN (xui_client_id, vless_link, is_active)
+- **notifications** — отправленные уведомления
+
+## Безопасность
+
+- ✅ Проверка `ADMIN_TELEGRAM_ID` во всех admin-хендлерах через middleware
+- ✅ Rate limiting — 30 запросов/минуту на пользователя
+- ✅ Валидация входных данных через Pydantic + validators
+- ✅ Логирование всех admin-действий
+- ✅ Защита от двойного зачисления (уникальный `charge_id`)
+- ✅ Верификация платежа через `telegram_payment_charge_id`
+- ✅ Atomic транзакции (списание + создание ключа)
+
+## Конфигурация (.env)
+
+Все параметры описаны в `.env.example`.
+
+Ключевые:
+- `BOT_TOKEN` — токен бота от @BotFather
+- `ADMIN_TELEGRAM_ID` — ваш Telegram ID
+- `XUI_URL` / `XUI_USERNAME` / `XUI_PASSWORD` — доступ к 3x-ui панели
+- `PLAN_*_STARS` — цены тарифов в Stars
+- `SERVER_ADDRESS` — IP/домен сервера для VLESS ссылок
