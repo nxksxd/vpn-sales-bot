@@ -329,7 +329,7 @@ async def _build_user_card(telegram_id: int) -> str:
         lines.append(f"  UUID: {code(active_sub.xui_client_id or '—')}")
 
     if keys:
-        lines.append(f"\n\U0001f511 <b>Ключи VPN ({len(keys)}):</b>")
+        lines.append(f"\n\U0001f511 <b>Ключи ({len(keys)}):</b>")
         for k in keys[:3]:
             status = "\u2705" if k.is_active else "\u274c"
             lines.append(f"  {status} {code(k.xui_client_id[:16])}...")
