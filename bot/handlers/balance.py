@@ -72,7 +72,7 @@ async def msg_custom_amount(message: Message, bot: Bot, state: FSMContext) -> No
     try:
         await bot.send_invoice(
             chat_id=message.chat.id,
-            title="Пополнение баланса VPN",
+            title="Пополнение баланса",
             description=f"Пополнение баланса на {amount} Stars",
             payload=f"topup_{amount}",
             currency="XTR",
@@ -91,7 +91,7 @@ async def _send_invoice(call: CallbackQuery, bot: Bot, amount: int) -> None:
         chat_id = call.message.chat.id if call.message else call.from_user.id
         await bot.send_invoice(
             chat_id=chat_id,
-            title="Пополнение баланса VPN",
+            title="Пополнение баланса",
             description=f"Пополнение баланса на {amount} Stars",
             payload=f"topup_{amount}",
             currency="XTR",

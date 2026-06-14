@@ -63,7 +63,7 @@ class SubscriptionService:
             "id": client_uuid,
             "email": email,
             "enable": True,
-            "flow": "xtls-rprx-vision",
+            "flow": "",
             "limitIp": 0,
             "totalGB": traffic_bytes,
             "expiryTime": expiry_ms,
@@ -85,11 +85,14 @@ class SubscriptionService:
                 inbound_data["settings_obj"] = json.loads(inbound_data["settings"])
             except (ValueError, TypeError):
                 inbound_data["settings_obj"] = {}
-        if isinstance(inbound_data.get("stream_settings"), str):
+        stream_raw = inbound_data.get("streamSettings") or inbound_data.get("stream_settings")
+        if isinstance(stream_raw, str):
             try:
-                inbound_data["stream_obj"] = json.loads(inbound_data["stream_settings"])
+                inbound_data["stream_obj"] = json.loads(stream_raw)
             except (ValueError, TypeError):
                 inbound_data["stream_obj"] = {}
+        elif isinstance(stream_raw, dict):
+            inbound_data["stream_obj"] = stream_raw
 
         port = inbound_data.get("port", 443)
         vless_link = build_vless_link(
@@ -98,7 +101,6 @@ class SubscriptionService:
             port=port,
             inbound=inbound_data,
             email=email,
-            flow="xtls-rprx-vision",
         )
 
         await self.user_repo.update_balance(telegram_id, -plan["stars"])
@@ -266,11 +268,14 @@ class SubscriptionService:
                 inbound_data["settings_obj"] = json.loads(inbound_data["settings"])
             except (ValueError, TypeError):
                 inbound_data["settings_obj"] = {}
-        if isinstance(inbound_data.get("stream_settings"), str):
+        stream_raw = inbound_data.get("streamSettings") or inbound_data.get("stream_settings")
+        if isinstance(stream_raw, str):
             try:
-                inbound_data["stream_obj"] = json.loads(inbound_data["stream_settings"])
+                inbound_data["stream_obj"] = json.loads(stream_raw)
             except (ValueError, TypeError):
                 inbound_data["stream_obj"] = {}
+        elif isinstance(stream_raw, dict):
+            inbound_data["stream_obj"] = stream_raw
 
         port = inbound_data.get("port", 443)
         email = result.get("email", f"user_{sub.user_id}")
