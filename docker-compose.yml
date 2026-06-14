@@ -4,7 +4,7 @@ services:
   vpn-bot:
     build: .
     container_name: vpn-bot
-    restart: unless-stopped
+    restart: always
     env_file:
       - .env
     volumes:
