@@ -11,7 +11,6 @@ from bot.database.session import async_session_factory
 from bot.database.repositories.user import UserRepository
 from bot.keyboards.user_kb import (
     MENU_BUTTONS_MAP,
-    main_menu_kb,
     persistent_menu_kb,
 )
 from bot.keyboards.admin_kb import admin_main_kb
@@ -68,23 +67,19 @@ async def cmd_start(message: Message, bot: Bot) -> None:
                             balance=str(referrer.balance + settings.referral_bonus_stars),
                         )
 
-    # Send persistent reply keyboard
-    await message.answer(
-        "\u2328\ufe0f Клавиатура активирована",
-        reply_markup=persistent_menu_kb(),
-    )
-
     if is_admin(user.id):
+        # Admin gets persistent keyboard + admin inline panel
         await message.answer(
             WELCOME_ADMIN_TEXT,
             parse_mode="HTML",
             reply_markup=admin_main_kb(),
         )
     else:
+        # Regular user gets only persistent reply keyboard (no inline duplicates)
         await message.answer(
             WELCOME_TEXT,
             parse_mode="HTML",
-            reply_markup=main_menu_kb(),
+            reply_markup=persistent_menu_kb(),
         )
 
 
@@ -97,7 +92,7 @@ async def cb_main_menu(call: CallbackQuery) -> None:
         kb = admin_main_kb()
     else:
         text = WELCOME_TEXT
-        kb = main_menu_kb()
+        kb = None  # regular users use persistent reply keyboard
 
     if call.message is not None:
         try:
