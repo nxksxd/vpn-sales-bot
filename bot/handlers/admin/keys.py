@@ -29,7 +29,7 @@ async def cb_keys_menu(call: CallbackQuery) -> None:
         keys = await key_repo.get_user_keys(tid)
 
     if not keys:
-        text = f"\U0001f511 У пользователя {code(tid)} нет VPN ключей."
+        text = f"\U0001f511 У пользователя {code(tid)} нет ключей."
     else:
         lines = [f"\U0001f511 <b>Ключи пользователя {code(tid)}:</b>\n"]
         for k in keys:

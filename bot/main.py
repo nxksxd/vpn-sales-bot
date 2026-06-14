@@ -95,7 +95,7 @@ async def on_startup(bot: Bot) -> None:
         try:
             await bot.send_message(
                 chat_id=admin_id,
-                text="\u2705 <b>VPN Bot запущен!</b>",
+                text="\u2705 <b>Портальный ключ запущен!</b>",
                 parse_mode="HTML",
             )
         except Exception as e:

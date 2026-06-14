@@ -29,7 +29,7 @@ async def cb_show_key(call: CallbackQuery) -> None:
     if active is None or not active.vless_link:
         if call.message:
             await call.message.edit_text(
-                "\u274c У вас нет активного ключа VPN.\n"
+                "\u274c У вас нет активного ключа.\n"
                 "Купите подписку чтобы получить ключ.",
                 parse_mode="HTML",
                 reply_markup=back_to_menu_kb(),
@@ -38,7 +38,7 @@ async def cb_show_key(call: CallbackQuery) -> None:
 
     text = (
         "\U0001f511 <b>Ваш ключ VLESS</b>\n\n"
-        "Скопируйте ссылку ниже и вставьте в VPN-клиент:\n\n"
+        "Скопируйте ссылку ниже и вставьте в приложение:\n\n"
         f"{code(active.vless_link)}\n\n"
         "\U0001f4f1 <i>Нажмите на ссылку чтобы скопировать</i>"
     )
@@ -72,7 +72,7 @@ async def cb_show_qr(call: CallbackQuery, bot: Bot) -> None:
     if active is None or not active.vless_link:
         if call.message:
             await call.message.edit_text(
-                "\u274c У вас нет активного ключа VPN.",
+                "\u274c У вас нет активного ключа.",
                 parse_mode="HTML",
                 reply_markup=back_to_menu_kb(),
             )
@@ -94,7 +94,7 @@ async def cb_show_qr(call: CallbackQuery, bot: Bot) -> None:
         photo=photo,
         caption=(
             "\U0001f4f1 <b>QR-код вашего ключа VLESS</b>\n\n"
-            "Отсканируйте QR-код в VPN-клиенте."
+            "Отсканируйте QR-код в приложении."
         ),
         parse_mode="HTML",
     )

@@ -20,14 +20,14 @@ from bot.services.referral import ReferralService
 router = Router(name="start")
 
 WELCOME_TEXT = (
-    "\U0001f510 <b>VPN Bot</b>\n\n"
-    "Добро пожаловать! Здесь вы можете приобрести VPN-подписку "
+    "\U0001f510 <b>Портальный ключ</b>\n\n"
+    "Добро пожаловать! Здесь вы можете приобрести подписку "
     "и получить быстрый и безопасный доступ к интернету.\n\n"
     "Выберите действие:"
 )
 
 WELCOME_ADMIN_TEXT = (
-    "\U0001f510 <b>VPN Bot — Админ-панель</b>\n\n"
+    "\U0001f510 <b>Портальный ключ — Админ-панель</b>\n\n"
     "Добро пожаловать, администратор!\n\n"
     "Выберите действие:"
 )
@@ -202,7 +202,7 @@ async def handle_menu_button(message: Message, bot: Bot) -> None:
             active = await sub_repo.get_active_by_user(user.id)
             if active is None or not active.vless_link:
                 await message.answer(
-                    "\u274c У вас нет активного ключа VPN.\n"
+                    "\u274c У вас нет активного ключа.\n"
                     "Купите подписку чтобы получить ключ.",
                     parse_mode="HTML",
                     reply_markup=back_to_menu_kb(),
@@ -210,7 +210,7 @@ async def handle_menu_button(message: Message, bot: Bot) -> None:
             else:
                 msg = (
                     "\U0001f511 <b>Ваш ключ VLESS</b>\n\n"
-                    "Скопируйте ссылку ниже и вставьте в VPN-клиент:\n\n"
+                    "Скопируйте ссылку ниже и вставьте в приложение:\n\n"
                     f"{code(active.vless_link)}\n\n"
                     "\U0001f4f1 <i>Нажмите на ссылку чтобы скопировать</i>"
                 )
