@@ -34,15 +34,17 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Safe migration: add auto_renew column if not exists (SQLite)
-        from sqlalchemy import text
 
-        try:
+    # Safe migration in separate transaction (works for both SQLite and PostgreSQL)
+    from sqlalchemy import text
+
+    try:
+        async with engine.begin() as conn:
             await conn.execute(
                 text("ALTER TABLE users ADD COLUMN auto_renew BOOLEAN DEFAULT 1")
             )
-        except Exception:
-            pass  # Column already exists
+    except Exception:
+        pass  # Column already exists
 
 
 async def close_db() -> None:

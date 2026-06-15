@@ -65,7 +65,7 @@ async def cmd_start(message: Message, bot: Bot) -> None:
                             referrer.telegram_id,
                             "referral_bonus",
                             bonus=str(settings.referral_bonus_rub),
-                            balance=str(referrer.balance + settings.referral_bonus_rub),
+                            balance=str(referrer.balance),
                         )
 
     if is_admin(user.id):

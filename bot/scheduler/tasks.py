@@ -329,17 +329,12 @@ async def process_auto_renewals() -> None:
                 finally:
                     await xui.close()
             else:
-                autorenew_info = (
-                    f"Автопродление невозможно — недостаточно средств.\n"
-                    f"Необходимо: {price_rub} ₽, на балансе: {user.balance} ₽."
-                )
                 await notif.send(
                     sub.user_id,
-                    "renewal_reminder_1d",
+                    "autorenew_insufficient",
                     subscription_id=sub.id,
-                    expires_at=fmt_date(sub.expires_at),
                     balance=str(user.balance),
-                    autorenew_info=autorenew_info,
+                    price=str(price_rub),
                 )
                 logger.info(
                     "Auto-renewal insufficient balance: user={} balance={} required={}",
