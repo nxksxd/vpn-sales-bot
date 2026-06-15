@@ -64,8 +64,8 @@ async def cmd_start(message: Message, bot: Bot) -> None:
                         await notif.send(
                             referrer.telegram_id,
                             "referral_bonus",
-                            bonus=str(settings.referral_bonus_stars),
-                            balance=str(referrer.balance + settings.referral_bonus_stars),
+                            bonus=str(settings.referral_bonus_rub),
+                            balance=str(referrer.balance + settings.referral_bonus_rub),
                         )
 
     if is_admin(user.id):
@@ -133,7 +133,8 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
         topup_kb,
     )
     from bot.services.referral import ReferralService
-    from bot.utils.formatters import code, days_until, esc, fmt_date, fmt_plan, fmt_stars, pluralize_days
+    from bot.keyboards.user_kb import user_settings_kb
+    from bot.utils.formatters import code, days_until, esc, fmt_date, fmt_plan, fmt_rub, pluralize_days
 
     async with async_session_factory() as session:
         user_repo = UserRepository(session)
@@ -153,7 +154,7 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
                 "\U0001f48e <b>Мой профиль</b>\n\n"
                 f"\U0001f194 ID: {code(db_user.telegram_id)}\n"
                 f"\U0001f464 Username: @{esc(db_user.username or '—')}\n"
-                f"\U0001f4b0 Баланс: <b>{fmt_stars(db_user.balance)}</b>\n"
+                f"\U0001f4b0 Баланс: <b>{fmt_rub(db_user.balance)}</b>\n"
                 f"\U0001f4c5 Дата регистрации: {fmt_date(db_user.created_at)}\n"
                 f"\U0001f465 Рефералов: {referral_count}\n\n"
                 f"\U0001f517 Реферальная ссылка:\n"
@@ -265,8 +266,18 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
                 "\U0001f465 <b>Реферальная программа</b>\n\n"
                 f"\U0001f517 Ваша реферальная ссылка:\n{code(ref_link)}\n\n"
                 f"\U0001f465 Приглашено: <b>{stats['count']}</b> пользователей\n"
-                f"\U0001f4b0 Заработано: <b>{fmt_stars(stats['earned'])}</b>\n\n"
-                f"\U0001f381 Бонус за каждого реферала: <b>{fmt_stars(settings.referral_bonus_stars)}</b>\n\n"
+                f"\U0001f4b0 Заработано: <b>{fmt_rub(stats['earned'])}</b>\n\n"
+                f"\U0001f381 Бонус за каждого реферала: <b>{fmt_rub(settings.referral_bonus_rub)}</b>\n\n"
                 "<i>Поделитесь ссылкой с друзьями и получайте бонусы!</i>"
             )
             await message.answer(msg, parse_mode="HTML", reply_markup=back_to_menu_kb())
+
+        elif callback_data == "u:settings":
+            db_user = await user_repo.get_by_telegram_id(user.id)
+            auto_renew = db_user.auto_renew if db_user else True
+            await message.answer(
+                "\u2699\ufe0f <b>Настройки</b>\n\n"
+                "Управление вашим аккаунтом:",
+                parse_mode="HTML",
+                reply_markup=user_settings_kb(auto_renew),
+            )

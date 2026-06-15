@@ -1,10 +1,11 @@
-"""Telegram Stars payment processing."""
+"""Telegram Stars payment processing (balance stored in rubles)."""
 
 from __future__ import annotations
 
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.config import settings
 from bot.database.repositories.transaction import TransactionRepository
 from bot.database.repositories.user import UserRepository
 
@@ -18,34 +19,38 @@ class PaymentService:
     async def process_topup(
         self,
         telegram_id: int,
-        amount: int,
+        amount_stars: int,
         charge_id: str,
-    ) -> bool:
+    ) -> int:
+        """Process top-up. Converts stars to rubles. Returns credited rub amount, 0 if duplicate."""
         if await self.tx_repo.charge_id_exists(charge_id):
             logger.warning(
                 "Duplicate charge_id detected: {} for user {}",
                 charge_id,
                 telegram_id,
             )
-            return False
+            return 0
+
+        rub_amount = settings.stars_to_rub(amount_stars)
 
         await self.tx_repo.create(
             user_id=telegram_id,
             tx_type="topup",
-            amount=amount,
-            description=f"Top-up {amount} Stars",
+            amount=rub_amount,
+            description=f"Пополнение: {amount_stars} Stars = {rub_amount} ₽",
             charge_id=charge_id,
         )
 
-        await self.user_repo.update_balance(telegram_id, amount)
+        await self.user_repo.update_balance(telegram_id, rub_amount)
 
         logger.info(
-            "Balance topped up: user={} amount={} charge_id={}",
+            "Balance topped up: user={} stars={} rub={} charge_id={}",
             telegram_id,
-            amount,
+            amount_stars,
+            rub_amount,
             charge_id,
         )
-        return True
+        return rub_amount
 
     async def process_refund(
         self,
@@ -87,7 +92,7 @@ class PaymentService:
             user_id=telegram_id,
             tx_type="admin_adjustment",
             amount=amount,
-            description=f"Admin adjustment by {admin_id}: {'+' if amount >= 0 else ''}{amount} Stars",
+            description=f"Корректировка админом {admin_id}: {'+' if amount >= 0 else ''}{amount} ₽",
         )
 
         await self.user_repo.update_balance(telegram_id, amount)

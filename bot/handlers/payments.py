@@ -79,13 +79,13 @@ async def successful_payment_handler(message: Message, bot: Bot) -> None:
 
     async with async_session_factory() as session:
         payment_service = PaymentService(session)
-        success = await payment_service.process_topup(
+        rub_credited = await payment_service.process_topup(
             telegram_id=user.id,
-            amount=amount,
+            amount_stars=amount,
             charge_id=charge_id,
         )
 
-        if not success:
+        if rub_credited == 0:
             await message.answer(
                 "\u26a0\ufe0f Платёж уже был обработан ранее.",
                 reply_markup=main_menu_kb(),
@@ -94,13 +94,14 @@ async def successful_payment_handler(message: Message, bot: Bot) -> None:
 
         repo = UserRepository(session)
         db_user = await repo.get_by_telegram_id(user.id)
-        new_balance = db_user.balance if db_user else amount
+        new_balance = db_user.balance if db_user else rub_credited
 
         notif = NotificationService(bot, session)
         await notif.send(
             user.id,
             "balance_topped_up",
-            amount=str(amount),
+            amount=str(rub_credited),
+            stars=str(amount),
             balance=str(new_balance),
         )
 

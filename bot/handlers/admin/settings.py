@@ -14,7 +14,7 @@ from bot.config import settings, BASE_DIR
 from bot.keyboards.admin_kb import admin_main_kb, admin_xui_settings_kb
 from bot.middlewares.admin_check import admin_only, is_admin
 from bot.services.xui_client import XUIClient
-from bot.utils.formatters import code, fmt_stars
+from bot.utils.formatters import code
 
 router = Router(name="admin_settings")
 
@@ -89,7 +89,7 @@ async def cb_settings(call: CallbackQuery) -> None:
     for key, plan in plans.items():
         discount = f" (-{plan['discount']}%)" if plan['discount'] > 0 else ""
         plan_lines.append(
-            f"  {plan['label']}: {fmt_stars(plan['stars'])}{discount}"
+            f"  {plan['label']}: {plan['rub']} \u20bd ({plan['stars']} \u2b50){discount}"
         )
 
     text = (
@@ -100,12 +100,13 @@ async def cb_settings(call: CallbackQuery) -> None:
         f"  Пароль: {code(_mask(settings.xui_password))}\n"
         f"  Inbound ID: {code(settings.xui_inbound_id)}\n"
         f"  Адрес сервера: {code(settings.server_address or '—')}\n\n"
-        f"\U0001f4b0 <b>Тарифы (Stars):</b>\n"
+        f"\U0001f4b0 <b>Тарифы:</b>\n"
         + "\n".join(plan_lines) + "\n\n"
+        f"\U0001f4b1 <b>Курс:</b> 1 \u2b50 = {settings.stars_to_rub_rate} \u20bd\n\n"
         f"\U0001f4ca <b>Трафик:</b>\n"
         f"  Лимит: {settings.traffic_limit_gb} GB"
         f" ({'безлимит' if settings.traffic_limit_gb == 0 else ''})\n\n"
-        f"\U0001f381 <b>Реферальный бонус:</b> {fmt_stars(settings.referral_bonus_stars)}\n"
+        f"\U0001f381 <b>Реферальный бонус:</b> {settings.referral_bonus_rub} \u20bd\n"
         f"\U0001f514 <b>Напоминания:</b> за {settings.notify_before_days} дней"
     )
 

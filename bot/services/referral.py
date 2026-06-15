@@ -33,17 +33,17 @@ class ReferralService:
         new_user.referred_by = referrer.telegram_id
         await self.session.commit()
 
-        bonus = settings.referral_bonus_stars
+        bonus = settings.referral_bonus_rub
         if bonus > 0:
             await self.user_repo.update_balance(referrer.telegram_id, bonus)
             await self.tx_repo.create(
                 user_id=referrer.telegram_id,
                 tx_type="referral_bonus",
                 amount=bonus,
-                description=f"Referral bonus for user {new_user_telegram_id}",
+                description=f"Реферальный бонус за {new_user_telegram_id}",
             )
             logger.info(
-                "Referral bonus: {} Stars to user {} for referral {}",
+                "Referral bonus: {} RUB to user {} for referral {}",
                 bonus,
                 referrer.telegram_id,
                 new_user_telegram_id,
@@ -57,7 +57,7 @@ class ReferralService:
             return {"referral_code": "", "count": 0, "earned": 0}
 
         count = await self.user_repo.get_referral_count(telegram_id)
-        earned = count * settings.referral_bonus_stars
+        earned = count * settings.referral_bonus_rub
 
         return {
             "referral_code": user.referral_code or "",

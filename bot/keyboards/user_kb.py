@@ -22,6 +22,7 @@ MENU_BTN_KEY = "\U0001f510 Мой ключ"
 MENU_BTN_SUPPORT = "\U0001f198 Поддержка"
 MENU_BTN_GUIDE = "\U0001f4d6 Инструкция"
 MENU_BTN_REF = "\U0001f465 Реферальная программа"
+MENU_BTN_SETTINGS = "\u2699\ufe0f Настройки"
 
 MENU_BUTTONS_MAP = {
     MENU_BTN_PROFILE: "u:profile",
@@ -32,6 +33,7 @@ MENU_BUTTONS_MAP = {
     MENU_BTN_SUPPORT: "u:support",
     MENU_BTN_GUIDE: "u:guide",
     MENU_BTN_REF: "u:ref",
+    MENU_BTN_SETTINGS: "u:settings",
 }
 
 
@@ -41,7 +43,7 @@ def persistent_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=MENU_BTN_PROFILE), KeyboardButton(text=MENU_BTN_KEY)],
             [KeyboardButton(text=MENU_BTN_BUY), KeyboardButton(text=MENU_BTN_TOPUP)],
             [KeyboardButton(text=MENU_BTN_SUBS), KeyboardButton(text=MENU_BTN_GUIDE)],
-            [KeyboardButton(text=MENU_BTN_REF), KeyboardButton(text=MENU_BTN_SUPPORT)],
+            [KeyboardButton(text=MENU_BTN_REF), KeyboardButton(text=MENU_BTN_SETTINGS)],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -75,7 +77,7 @@ def buy_plan_kb() -> InlineKeyboardMarkup:
     rows = []
     for key, plan in plans.items():
         discount_text = f" (-{plan['discount']}%)" if plan['discount'] > 0 else ""
-        text = f"{plan['label']} — {plan['stars']} \u2b50{discount_text}"
+        text = f"{plan['label']} — {plan['rub']} \u20bd ({plan['stars']} \u2b50){discount_text}"
         rows.append(
             [InlineKeyboardButton(text=text, callback_data=f"buy:{key}")]
         )
@@ -100,13 +102,14 @@ def confirm_purchase_kb(plan_type: str) -> InlineKeyboardMarkup:
 
 
 def topup_kb() -> InlineKeyboardMarkup:
-    amounts = [100, 250, 500, 1000]
+    amounts = [50, 100, 250, 500]
     rows = []
     for amount in amounts:
+        rub = settings.stars_to_rub(amount)
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"{amount} \u2b50",
+                    text=f"{amount} \u2b50 = {rub} \u20bd",
                     callback_data=f"topup:{amount}",
                 )
             ]
@@ -166,7 +169,7 @@ def renew_plan_kb() -> InlineKeyboardMarkup:
     rows = []
     for key, plan in plans.items():
         discount_text = f" (-{plan['discount']}%)" if plan['discount'] > 0 else ""
-        text = f"{plan['label']} — {plan['stars']} \u2b50{discount_text}"
+        text = f"{plan['label']} — {plan['rub']} \u20bd ({plan['stars']} \u2b50){discount_text}"
         rows.append(
             [InlineKeyboardButton(text=text, callback_data=f"renew:{key}")]
         )
@@ -174,6 +177,16 @@ def renew_plan_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="\u00ab Назад", callback_data="u:subs")]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def user_settings_kb(auto_renew: bool) -> InlineKeyboardMarkup:
+    toggle_text = "\u2705 Автопродление: ВКЛ" if auto_renew else "\u274c Автопродление: ВЫКЛ"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=toggle_text, callback_data="u:toggle_autorenew")],
+            [InlineKeyboardButton(text="\u00ab Назад", callback_data="u:menu")],
+        ]
+    )
 
 
 def guide_kb() -> InlineKeyboardMarkup:

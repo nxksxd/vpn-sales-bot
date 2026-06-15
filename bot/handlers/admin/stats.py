@@ -13,7 +13,7 @@ from bot.database.repositories.transaction import TransactionRepository
 from bot.database.repositories.user import UserRepository
 from bot.keyboards.admin_kb import admin_main_kb
 from bot.middlewares.admin_check import admin_only
-from bot.utils.formatters import fmt_stars
+from bot.utils.formatters import fmt_rub
 
 router = Router(name="admin_stats")
 
@@ -50,10 +50,10 @@ async def cb_stats(call: CallbackQuery) -> None:
         f"  Заблокированных: {banned_users}\n\n"
         f"\U0001f511 <b>Подписки:</b>\n"
         f"  Активных: <b>{active_subs}</b>\n\n"
-        f"\U0001f4b0 <b>Доход (Stars):</b>\n"
-        f"  Сегодня: <b>{fmt_stars(income_today)}</b>\n"
-        f"  За неделю: {fmt_stars(income_week)}\n"
-        f"  За месяц: {fmt_stars(income_month)}\n"
+        f"\U0001f4b0 <b>Доход:</b>\n"
+        f"  Сегодня: <b>{fmt_rub(income_today)}</b>\n"
+        f"  За неделю: {fmt_rub(income_week)}\n"
+        f"  За месяц: {fmt_rub(income_month)}\n"
     )
 
     if call.message:

@@ -9,7 +9,7 @@ from bot.config import settings
 from bot.database.session import async_session_factory
 from bot.keyboards.user_kb import back_to_menu_kb
 from bot.services.referral import ReferralService
-from bot.utils.formatters import code, fmt_stars
+from bot.utils.formatters import code, fmt_rub
 
 router = Router(name="referral")
 
@@ -33,8 +33,8 @@ async def cb_referral(call: CallbackQuery) -> None:
         "\U0001f465 <b>Реферальная программа</b>\n\n"
         f"\U0001f517 Ваша реферальная ссылка:\n{code(ref_link)}\n\n"
         f"\U0001f465 Приглашено: <b>{stats['count']}</b> пользователей\n"
-        f"\U0001f4b0 Заработано: <b>{fmt_stars(stats['earned'])}</b>\n\n"
-        f"\U0001f381 Бонус за каждого реферала: <b>{fmt_stars(settings.referral_bonus_stars)}</b>\n\n"
+        f"\U0001f4b0 Заработано: <b>{fmt_rub(stats['earned'])}</b>\n\n"
+        f"\U0001f381 Бонус за каждого реферала: <b>{fmt_rub(settings.referral_bonus_rub)}</b>\n\n"
         "<i>Поделитесь ссылкой с друзьями и получайте бонусы!</i>"
     )
 

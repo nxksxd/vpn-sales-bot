@@ -25,6 +25,15 @@ def fmt_stars(amount: int) -> str:
     return f"{amount} \u2b50"
 
 
+def fmt_rub(amount: int) -> str:
+    return f"{amount} \u20bd"
+
+
+def fmt_price(rub: int, stars: int) -> str:
+    """Format price showing rubles with stars in parentheses."""
+    return f"{rub} \u20bd ({stars} \u2b50)"
+
+
 def fmt_bytes(b: Optional[int]) -> str:
     if b is None or b == 0:
         return "0 B"

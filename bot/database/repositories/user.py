@@ -140,3 +140,17 @@ class UserRepository:
             select(func.count(User.id)).where(User.referred_by == telegram_id)
         )
         return result.scalar_one()
+
+    async def set_auto_renew(self, telegram_id: int, enabled: bool) -> None:
+        await self.session.execute(
+            update(User)
+            .where(User.telegram_id == telegram_id)
+            .values(auto_renew=enabled)
+        )
+        await self.session.commit()
+
+    async def get_users_with_auto_renew(self) -> Sequence[User]:
+        result = await self.session.execute(
+            select(User).where(User.auto_renew.is_(True), User.is_banned.is_(False))
+        )
+        return result.scalars().all()

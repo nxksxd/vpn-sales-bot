@@ -39,9 +39,9 @@ class SubscriptionService:
             raise ValueError("User not found")
         if user.is_banned:
             raise ValueError("User is banned")
-        if user.balance < plan["stars"]:
+        if user.balance < plan["rub"]:
             raise ValueError(
-                f"Insufficient balance: {user.balance} < {plan['stars']}"
+                f"Insufficient balance: {user.balance} < {plan['rub']}"
             )
 
         existing = await self.sub_repo.get_active_by_user(telegram_id)
@@ -103,19 +103,19 @@ class SubscriptionService:
             email=email,
         )
 
-        await self.user_repo.update_balance(telegram_id, -plan["stars"])
+        await self.user_repo.update_balance(telegram_id, -plan["rub"])
 
         await self.tx_repo.create(
             user_id=telegram_id,
             tx_type="purchase",
-            amount=-plan["stars"],
-            description=f"Subscription {plan['label']} ({plan_type})",
+            amount=-plan["rub"],
+            description=f"Подписка {plan['label']} ({plan_type})",
         )
 
         sub = await self.sub_repo.create(
             user_id=telegram_id,
             plan_type=plan_type,
-            price_stars=plan["stars"],
+            price_stars=plan["rub"],
             days=plan["days"],
             xui_client_id=client_uuid,
             xui_inbound_id=settings.xui_inbound_id,
@@ -150,9 +150,9 @@ class SubscriptionService:
         user = await self.user_repo.get_by_telegram_id(telegram_id)
         if user is None:
             raise ValueError("User not found")
-        if user.balance < plan["stars"]:
+        if user.balance < plan["rub"]:
             raise ValueError(
-                f"Insufficient balance: {user.balance} < {plan['stars']}"
+                f"Insufficient balance: {user.balance} < {plan['rub']}"
             )
 
         existing = await self.sub_repo.get_active_by_user(telegram_id)
@@ -180,13 +180,13 @@ class SubscriptionService:
             except XuiError as e:
                 logger.error("Failed to update 3X-UI client expiry: {}", e)
 
-        await self.user_repo.update_balance(telegram_id, -plan["stars"])
+        await self.user_repo.update_balance(telegram_id, -plan["rub"])
 
         await self.tx_repo.create(
             user_id=telegram_id,
             tx_type="purchase",
-            amount=-plan["stars"],
-            description=f"Renewal {plan['label']} ({plan_type})",
+            amount=-plan["rub"],
+            description=f"Продление {plan['label']} ({plan_type})",
         )
 
         sub = await self.sub_repo.extend(existing.id, plan["days"])

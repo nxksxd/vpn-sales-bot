@@ -24,7 +24,8 @@ from bot.utils.formatters import (
     code,
     fmt_date,
     fmt_plan,
-    fmt_stars,
+    fmt_price,
+    fmt_rub,
     fmt_status,
     fmt_traffic_limit,
     days_until,
@@ -88,14 +89,14 @@ async def cb_buy_menu(call: CallbackQuery) -> None:
             "\U0001f504 <b>Продление подписки</b>\n\n"
             f"У вас уже есть активная подписка (<b>{fmt_plan(active.plan_type)}</b>, "
             f"осталось <b>{pluralize_days(remaining)}</b>).\n\n"
-            f"\U0001f4b0 Ваш баланс: <b>{fmt_stars(balance)}</b>\n\n"
+            f"\U0001f4b0 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
             "Выберите период продления:"
         )
         kb = renew_plan_kb()
     else:
         text = (
             "\U0001f6d2 <b>Купить подписку</b>\n\n"
-            f"\U0001f4b0 Ваш баланс: <b>{fmt_stars(balance)}</b>\n\n"
+            f"\U0001f4b0 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
             "Выберите тариф:"
         )
         kb = buy_plan_kb()
@@ -124,17 +125,18 @@ async def cb_buy_plan(call: CallbackQuery) -> None:
         db_user = await user_repo.get_by_telegram_id(call.from_user.id)
 
     balance = db_user.balance if db_user else 0
+    plan_rub = plan["rub"]
     text = (
         f"\U0001f6d2 <b>Подтверждение покупки</b>\n\n"
         f"\U0001f4cb Тариф: <b>{plan['label']}</b>\n"
-        f"\U0001f4b0 Стоимость: <b>{fmt_stars(plan['stars'])}</b>\n"
-        f"\U0001f48e Ваш баланс: {fmt_stars(balance)}\n\n"
+        f"\U0001f4b0 Стоимость: <b>{fmt_price(plan_rub, plan['stars'])}</b>\n"
+        f"\U0001f48e Ваш баланс: {fmt_rub(balance)}\n\n"
     )
 
-    if balance < plan["stars"]:
+    if balance < plan_rub:
         text += (
             "\u274c <b>Недостаточно средств!</b>\n"
-            f"Необходимо ещё {fmt_stars(plan['stars'] - balance)}.\n"
+            f"Необходимо ещё {fmt_rub(plan_rub - balance)}.\n"
             "Пополните баланс."
         )
         if call.message:
@@ -222,7 +224,7 @@ async def cb_renew_menu(call: CallbackQuery) -> None:
     balance = db_user.balance if db_user else 0
     text = (
         "\U0001f504 <b>Продление подписки</b>\n\n"
-        f"\U0001f4b0 Ваш баланс: <b>{fmt_stars(balance)}</b>\n\n"
+        f"\U0001f4b0 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
         "Выберите период продления:"
     )
     if call.message:

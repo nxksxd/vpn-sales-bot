@@ -28,6 +28,7 @@ from bot.handlers import subscriptions as h_subscriptions
 from bot.handlers import keys as h_keys
 from bot.handlers import referral as h_referral
 from bot.handlers import support as h_support
+from bot.handlers import user_settings as h_user_settings
 from bot.handlers.admin import main as h_admin_main
 from bot.handlers.admin import users as h_admin_users
 from bot.handlers.admin import keys as h_admin_keys
@@ -68,6 +69,7 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(h_keys.router)
     dp.include_router(h_referral.router)
     dp.include_router(h_support.router)
+    dp.include_router(h_user_settings.router)
 
     dp.include_router(h_admin_main.router)
     dp.include_router(h_admin_users.router)

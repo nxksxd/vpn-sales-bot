@@ -17,7 +17,7 @@ from bot.database.repositories.vpn_key import VpnKeyRepository
 from bot.services.notification import NotificationService
 from bot.services.subscription import SubscriptionService
 from bot.services.xui_client import XUIClient
-from bot.utils.formatters import fmt_date, fmt_stars
+from bot.utils.formatters import fmt_date, fmt_rub
 
 
 scheduler = AsyncIOScheduler(timezone="UTC")
@@ -55,6 +55,13 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         hour=9,
         minute=0,
         id="daily_report",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        process_auto_renewals,
+        "interval",
+        hours=1,
+        id="auto_renewals",
         replace_existing=True,
     )
 
@@ -96,12 +103,21 @@ async def check_expiring_subscriptions() -> None:
                 if template_key not in ("renewal_reminder_3d", "renewal_reminder_1d"):
                     template_key = "renewal_reminder_3d" if days >= 3 else "renewal_reminder_1d"
 
+                extra_kwargs: dict[str, str] = {
+                    "expires_at": fmt_date(sub.expires_at),
+                    "balance": str(balance),
+                }
+                if template_key == "renewal_reminder_1d":
+                    if user and user.auto_renew:
+                        extra_kwargs["autorenew_info"] = "Автопродление включено — подписка будет продлена автоматически."
+                    else:
+                        extra_kwargs["autorenew_info"] = "Продлите сейчас чтобы сохранить доступ."
+
                 await notif.send(
                     sub.user_id,
                     template_key,
                     subscription_id=sub.id,
-                    expires_at=fmt_date(sub.expires_at),
-                    balance=str(balance),
+                    **extra_kwargs,
                 )
                 logger.info(
                     "Sent {}-day reminder to user {}", days, sub.user_id
@@ -228,8 +244,8 @@ async def send_daily_report() -> None:
         f"\U0001f4c5 {now.strftime('%d.%m.%Y')}\n\n"
         f"\U0001f465 Пользователей: {total_users}\n"
         f"\U0001f511 Активных подписок: {active_subs}\n"
-        f"\U0001f4b0 Доход сегодня: {fmt_stars(income_today)}\n"
-        f"\U0001f4b0 Доход вчера: {fmt_stars(income_yesterday)}\n"
+        f"\U0001f4b0 Доход сегодня: {fmt_rub(income_today)}\n"
+        f"\U0001f4b0 Доход вчера: {fmt_rub(income_yesterday)}\n"
         f"\U0001f4b3 Транзакций сегодня: {new_txs_today}\n"
         f"\u26a0\ufe0f Истекает в ближайшие 3 дня: {len(expiring_3d)}\n"
     )
@@ -241,3 +257,93 @@ async def send_daily_report() -> None:
         logger.info("Daily report sent to admin {}", admin_id)
     except Exception as e:
         logger.error("Failed to send daily report: {}", e)
+
+
+async def process_auto_renewals() -> None:
+    """Process auto-renewals for subscriptions expiring within 1 day."""
+    if _bot is None:
+        return
+
+    logger.info("Processing auto-renewals...")
+
+    async with async_session_factory() as session:
+        sub_repo = SubscriptionRepository(session)
+        user_repo = UserRepository(session)
+        notif = NotificationService(_bot, session)
+
+        expiring = await sub_repo.get_expiring_soon(1)
+
+        for sub in expiring:
+            user = await user_repo.get_by_telegram_id(sub.user_id)
+            if user is None or not user.auto_renew:
+                continue
+
+            from bot.database.models import Notification
+            from sqlalchemy import select
+
+            already_processed = await session.execute(
+                select(Notification).where(
+                    Notification.user_id == sub.user_id,
+                    Notification.subscription_id == sub.id,
+                    Notification.type.in_(["autorenew_success", "autorenew_insufficient"]),
+                )
+            )
+            if already_processed.scalar_one_or_none() is not None:
+                continue
+
+            plan = settings.plans.get(sub.plan_type)
+            if plan is None:
+                plan = settings.plans.get("1m")
+            if plan is None:
+                continue
+
+            price_rub = plan["rub"]
+
+            if user.balance >= price_rub:
+                xui = XUIClient()
+                try:
+                    sub_service = SubscriptionService(session, xui)
+                    renewed_sub = await sub_service.renew(sub.user_id, sub.plan_type)
+                    if renewed_sub:
+                        updated_user = await user_repo.get_by_telegram_id(sub.user_id)
+                        new_balance = updated_user.balance if updated_user else 0
+                        await notif.send(
+                            sub.user_id,
+                            "autorenew_success",
+                            subscription_id=sub.id,
+                            expires_at=fmt_date(renewed_sub.expires_at),
+                            price=str(price_rub),
+                            balance=str(new_balance),
+                        )
+                        logger.info(
+                            "Auto-renewed subscription: user={} plan={}",
+                            sub.user_id,
+                            sub.plan_type,
+                        )
+                except Exception as e:
+                    logger.error(
+                        "Auto-renewal failed for user {}: {}",
+                        sub.user_id,
+                        e,
+                    )
+                finally:
+                    await xui.close()
+            else:
+                autorenew_info = (
+                    f"Автопродление невозможно — недостаточно средств.\n"
+                    f"Необходимо: {price_rub} ₽, на балансе: {user.balance} ₽."
+                )
+                await notif.send(
+                    sub.user_id,
+                    "renewal_reminder_1d",
+                    subscription_id=sub.id,
+                    expires_at=fmt_date(sub.expires_at),
+                    balance=str(user.balance),
+                    autorenew_info=autorenew_info,
+                )
+                logger.info(
+                    "Auto-renewal insufficient balance: user={} balance={} required={}",
+                    sub.user_id,
+                    user.balance,
+                    price_rub,
+                )

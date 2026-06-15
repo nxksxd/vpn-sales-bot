@@ -33,6 +33,7 @@ class User(Base):
     balance: Mapped[int] = mapped_column(Integer, default=0)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_renew: Mapped[bool] = mapped_column(Boolean, default=True)
     referral_code: Mapped[Optional[str]] = mapped_column(String(20), unique=True, nullable=True)
     referred_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(

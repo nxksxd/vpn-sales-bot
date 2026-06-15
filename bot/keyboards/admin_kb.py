@@ -150,7 +150,7 @@ def admin_xui_settings_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="\U0001f4e1 Изменить Inbound ID", callback_data="adm:set:xui_inbound_id")],
             [InlineKeyboardButton(text="\U0001f5a5 Изменить адрес сервера", callback_data="adm:set:server_address")],
             [InlineKeyboardButton(text="\U0001f50d Проверить подключение", callback_data="adm:set:test")],
-            [InlineKeyboardButton(text="\u00ab Настройки", callback_data="adm:settings")],
+            [InlineKeyboardButton(text="\u00ab Админ-панель", callback_data="adm:main")],
         ]
     )
 

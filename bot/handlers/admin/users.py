@@ -22,7 +22,7 @@ from bot.keyboards.admin_kb import (
 )
 from bot.middlewares.admin_check import admin_only
 from bot.services.payment import PaymentService
-from bot.utils.formatters import code, esc, fmt_date, fmt_plan, fmt_stars
+from bot.utils.formatters import code, esc, fmt_date, fmt_plan, fmt_rub
 from bot.utils.validators import validate_balance_change
 
 router = Router(name="admin_users")
@@ -100,7 +100,7 @@ async def msg_user_search(message: Message, state: FSMContext) -> None:
         for u in users[:20]:
             lines.append(
                 f"\u2022 {code(u.telegram_id)} | @{esc(u.username or '—')} | "
-                f"{fmt_stars(u.balance)}"
+                f"{fmt_rub(u.balance)}"
             )
         await message.answer("\n".join(lines), parse_mode="HTML")
 
@@ -122,7 +122,7 @@ async def cb_user_list(call: CallbackQuery) -> None:
         ban_mark = "\U0001f6ab" if u.is_banned else ""
         lines.append(
             f"\u2022 {code(u.telegram_id)} | @{esc(u.username or '—')} | "
-            f"{fmt_stars(u.balance)} {ban_mark}"
+            f"{fmt_rub(u.balance)} {ban_mark}"
         )
 
     if call.message:
@@ -316,7 +316,7 @@ async def _build_user_card(telegram_id: int) -> str:
         f"\U0001f194 ID: {code(user.telegram_id)}",
         f"\U0001f464 Username: @{esc(user.username or '—')}",
         f"\U0001f4dd Имя: {esc(user.first_name or '—')}",
-        f"\U0001f4b0 Баланс: <b>{fmt_stars(user.balance)}</b>",
+        f"\U0001f4b0 Баланс: <b>{fmt_rub(user.balance)}</b>",
         f"\U0001f7e2 Статус: {ban_status}",
         f"\U0001f4c5 Регистрация: {fmt_date(user.created_at)}",
         f"\U0001f552 Последняя активность: {fmt_date(user.last_active)}",
