@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from aiogram import Bot, F, Router
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from bot.config import settings
@@ -109,8 +110,9 @@ async def cb_noop(call: CallbackQuery) -> None:
 # ── Persistent reply keyboard text handler ─────────────────────────
 
 @router.message(F.text.in_(MENU_BUTTONS_MAP.keys()))
-async def handle_menu_button(message: Message, bot: Bot) -> None:
+async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> None:
     """Route persistent keyboard button presses to handlers."""
+    await state.clear()
     text = message.text or ""
     callback_data = MENU_BUTTONS_MAP.get(text)
     if not callback_data:

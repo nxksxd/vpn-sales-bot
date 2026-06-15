@@ -52,6 +52,8 @@ def _update_env_file(env_key: str, value: str) -> None:
         lines = new_lines
 
     if not found:
+        if lines and not lines[-1].endswith("\n"):
+            lines.append("\n")
         lines.append(f"{env_key}={value}\n")
 
     env_path.write_text("".join(lines))
