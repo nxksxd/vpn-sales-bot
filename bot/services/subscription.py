@@ -58,6 +58,17 @@ def _insufficient_balance_error(have: int, need: int) -> UserFacingError:
     )
 
 
+def _is_client_missing(exc: XuiError) -> bool:
+    """True if 3X-UI reports the client/record is already gone.
+
+    Disabling or removing a client that no longer exists in the panel is a
+    no-op for our purposes (the end state — client cannot connect — is already
+    satisfied), so callers should treat this as success, not failure.
+    """
+    msg = (exc.message or "").lower()
+    return exc.code == 404 or "record not found" in msg or "not found" in msg
+
+
 def _xui_error(action: str, exc: XuiError) -> UserFacingError:
     """Wrap a low-level 3x-ui failure into a friendly message."""
     return UserFacingError(
@@ -135,8 +146,22 @@ class SubscriptionService:
         plan_type: str,
         idempotency_key: str | None = None,
         is_trial: bool = False,
+        inbound_id: int | None = None,
+        server_address: str | None = None,
+        region_code: str | None = None,
+        promo_code: str | None = None,
     ) -> Optional[Subscription]:
+        # Resolve effective inbound: caller-supplied (region picker) wins
+        # over the legacy single-inbound setting from .env. Same for the
+        # public server address shown in the VLESS link.
+        effective_inbound_id = inbound_id if inbound_id is not None else settings.xui_inbound_id
+        effective_server = (
+            server_address
+            or settings.server_address
+            or settings.xui_url.split("://")[-1].split(":")[0]
+        )
         plan = settings.plans.get(plan_type)
+
         if plan is None:
             raise UserFacingError(
                 "⚠️ Этот тариф больше не доступен. Выберите другой в меню «🛒 Купить подписку».",
@@ -210,21 +235,25 @@ class SubscriptionService:
         }
 
         try:
-            await self.xui.add_client(settings.xui_inbound_id, client_data)
+            await self.xui.add_client(effective_inbound_id, client_data)
         except XuiError as e:
-            logger.error("Failed to create 3X-UI client: {}", e)
+            logger.error(
+                "Failed to create 3X-UI client in inbound {}: {}",
+                effective_inbound_id,
+                e,
+            )
             raise _xui_error("add_client", e)
 
-        server = settings.server_address or settings.xui_url.split("://")[-1].split(":")[0]
-        inbound_data = _parse_inbound(await self.xui.get_inbound(settings.xui_inbound_id))
+        inbound_data = _parse_inbound(await self.xui.get_inbound(effective_inbound_id))
         port = inbound_data.get("port", 443)
         vless_link = build_vless_link(
             uuid=client_uuid,
-            server=server,
+            server=effective_server,
             port=port,
             inbound=inbound_data,
             email=email,
         )
+
 
         if plan["rub"] > 0:
             user_after_debit = await self.user_repo.update_balance(
@@ -286,21 +315,23 @@ class SubscriptionService:
             price_rub=plan["rub"],
             days=plan["days"],
             xui_client_id=client_uuid,
-            xui_inbound_id=settings.xui_inbound_id,
+            xui_inbound_id=effective_inbound_id,
             vless_link=vless_link,
             traffic_limit_gb=effective_traffic_gb,
             is_trial=is_trial,
             sub_id=sub_id,
+            region_code=region_code,
         )
 
         await self.key_repo.create(
             subscription_id=sub.id,
             user_id=telegram_id,
             xui_client_id=client_uuid,
-            xui_inbound_id=settings.xui_inbound_id,
+            xui_inbound_id=effective_inbound_id,
             email=email,
             vless_link=vless_link,
         )
+
 
         logger.info(
             "Subscription purchased: user={} plan={} uuid={} sub_id={}",
@@ -422,10 +453,18 @@ class SubscriptionService:
                     },
                 )
             except XuiError as e:
-                logger.error(
-                    "Failed to disable 3X-UI client {}: {}", sub.xui_client_id, e
-                )
-                raise _xui_error("update_client", e)
+                if _is_client_missing(e):
+                    logger.warning(
+                        "3X-UI client {} already absent, treating deactivation "
+                        "as done: {}",
+                        sub.xui_client_id,
+                        e,
+                    )
+                else:
+                    logger.error(
+                        "Failed to disable 3X-UI client {}: {}", sub.xui_client_id, e
+                    )
+                    raise _xui_error("update_client", e)
 
         await self.sub_repo.set_status(sub.id, SubscriptionStatus.EXPIRED)
         await self.key_repo.deactivate_by_subscription(sub.id)
@@ -455,7 +494,15 @@ class SubscriptionService:
                     },
                 )
             except XuiError as e:
-                raise _xui_error("update_client", e)
+                if _is_client_missing(e):
+                    logger.warning(
+                        "3X-UI client {} already absent, treating suspend as "
+                        "done: {}",
+                        sub.xui_client_id,
+                        e,
+                    )
+                else:
+                    raise _xui_error("update_client", e)
         await self.sub_repo.mark_suspended(sub.id)
 
     async def reactivate_key(self, sub: Subscription) -> None:
