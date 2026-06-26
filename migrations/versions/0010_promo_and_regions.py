@@ -19,7 +19,7 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision = "0010_promo_valid_until_and_default_regions"
+revision = "0010_promo_and_regions"
 down_revision = "0009_subscription_sub_id"
 branch_labels = None
 depends_on = None
