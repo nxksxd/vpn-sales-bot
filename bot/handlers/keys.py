@@ -21,15 +21,20 @@ from aiogram import Bot, F, Router
 from aiogram.types import BufferedInputFile, CallbackQuery
 from loguru import logger
 
+import datetime
+import json
+
 from bot.config import settings
 from bot.database.models import Subscription
 from bot.database.session import async_session_factory
 from bot.database.repositories.subscription import SubscriptionRepository
+from bot.database.repositories.vpn_key import VpnKeyRepository
 from bot.keyboards.user_kb import back_to_menu_kb, subscription_kb
 from bot.services.qr_generator import generate_qr_buffer
 from bot.services.subscription import SubscriptionService, UserFacingError
-from bot.services.xui_client import XUIClient
+from bot.services.xui_client import XUIClient, XuiError
 from bot.utils.formatters import code
+
 
 
 router = Router(name="keys")
@@ -269,3 +274,216 @@ async def cb_upgrade_key(call: CallbackQuery) -> None:
                 parse_mode="HTML",
                 reply_markup=subscription_kb(has_active=True),
             )
+
+
+# ── Key verification (no regeneration) ───────────────────────────────
+
+
+def _fmt_bytes(value: int) -> str:
+    """Pretty-print byte counts as KB / MB / GB."""
+    try:
+        value = int(value or 0)
+    except (TypeError, ValueError):
+        return "0 B"
+    if value <= 0:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(value)
+    idx = 0
+    while size >= 1024 and idx < len(units) - 1:
+        size /= 1024
+        idx += 1
+    return f"{size:.2f} {units[idx]}"
+
+
+async def _verify_client_on_panel(
+    xui: XUIClient, sub: Subscription
+) -> tuple[bool, str]:
+    """Check that the user's client really exists on 3x-ui and is healthy.
+
+    Returns ``(ok, human_readable_status_block)``.
+
+    The method never modifies anything on the panel — it only reads inbound
+    state and (optionally) per-client stats. This is what the
+    «🔄 Обновить ключ VLESS» button is wired to: the user gets a clear
+    confirmation that the existing key is still valid, without us issuing
+    a new UUID / breaking their imported configuration.
+    """
+    if not sub.xui_client_id or not sub.xui_inbound_id:
+        return False, "❌ Ключ не привязан к VPN-серверу."
+
+    try:
+        inbound_raw = await xui.get_inbound(sub.xui_inbound_id)
+    except XuiError as e:
+        logger.warning("verify_client: get_inbound failed: {}", e)
+        return False, "⚠️ Не удалось связаться с VPN-сервером. Попробуйте позже."
+
+    if not inbound_raw:
+        return False, "❌ Не найден входящий профиль на сервере."
+
+    # 3x-ui returns settings/streamSettings as JSON strings.
+    settings_raw = inbound_raw.get("settings")
+    if isinstance(settings_raw, str):
+        try:
+            settings_obj = json.loads(settings_raw)
+        except (ValueError, TypeError):
+            settings_obj = {}
+    elif isinstance(settings_raw, dict):
+        settings_obj = settings_raw
+    else:
+        settings_obj = inbound_raw.get("settings_obj") or {}
+
+    clients = settings_obj.get("clients") or []
+    client = next(
+        (c for c in clients if c.get("id") == sub.xui_client_id), None
+    )
+    if client is None:
+        return (
+            False,
+            "❌ Ваш ключ не найден на сервере. Обратитесь в поддержку — "
+            "возможно, потребуется перевыпуск.",
+        )
+
+    if not client.get("enable", True):
+        return (
+            False,
+            "⛔ Ключ найден, но отключён на сервере. Обратитесь в поддержку.",
+        )
+
+    notes: list[str] = []
+
+    # Expiry (3x-ui stores it in milliseconds; 0 = unlimited).
+    expiry_ms = client.get("expiryTime") or 0
+    try:
+        expiry_ms = int(expiry_ms)
+    except (TypeError, ValueError):
+        expiry_ms = 0
+    if expiry_ms > 0:
+        expiry_dt = datetime.datetime.utcfromtimestamp(expiry_ms / 1000)
+        if expiry_dt <= datetime.datetime.utcnow():
+            return (
+                False,
+                f"⌛ Срок действия ключа истёк ({expiry_dt:%d.%m.%Y %H:%M} UTC). "
+                "Продлите подписку.",
+            )
+        notes.append(f"📅 Действует до: <b>{expiry_dt:%d.%m.%Y %H:%M} UTC</b>")
+    else:
+        notes.append("📅 Срок действия: <b>без ограничений</b>")
+
+    # Traffic stats (best-effort — endpoint may not be available on every build).
+    total_gb_raw = client.get("totalGB") or 0
+    try:
+        total_bytes_limit = int(total_gb_raw)
+    except (TypeError, ValueError):
+        total_bytes_limit = 0
+
+    stats = None
+    email = client.get("email") or ""
+    if email:
+        try:
+            stats = await xui.get_client_stats(email)
+        except Exception as e:  # pragma: no cover — best-effort
+            logger.debug("verify_client: get_client_stats failed: {}", e)
+            stats = None
+
+    used_bytes = 0
+    if isinstance(stats, dict):
+        try:
+            used_bytes = int(stats.get("up", 0)) + int(stats.get("down", 0))
+        except (TypeError, ValueError):
+            used_bytes = 0
+
+    if total_bytes_limit > 0:
+        if used_bytes >= total_bytes_limit:
+            return (
+                False,
+                "📛 Превышен лимит трафика по ключу. Обратитесь в поддержку "
+                "или продлите подписку.",
+            )
+        notes.append(
+            f"📊 Трафик: <b>{_fmt_bytes(used_bytes)} / {_fmt_bytes(total_bytes_limit)}</b>"
+        )
+    else:
+        notes.append(
+            f"📊 Трафик: <b>{_fmt_bytes(used_bytes)} (без лимита)</b>"
+        )
+
+    return True, "\n".join(notes)
+
+
+@router.callback_query(F.data == "sub:check_key")
+async def cb_check_key(call: CallbackQuery) -> None:
+    """Verify the existing key without issuing a new one.
+
+    Reads the current client config from 3x-ui and tells the user whether
+    their key is still valid (exists on the panel, enabled, not expired,
+    within traffic limit). Никаких новых UUID не генерируется — пользователь
+    может продолжать пользоваться уже импортированной ссылкой.
+    """
+    await call.answer("Проверяю ключ…")
+    user = call.from_user
+    if user is None:
+        return
+
+    async with async_session_factory() as session:
+        sub_repo = SubscriptionRepository(session)
+        active = await sub_repo.get_active_by_user(user.id)
+
+        if active is None:
+            if call.message:
+                await call.message.edit_text(
+                    _no_key_text(),
+                    parse_mode="HTML",
+                    reply_markup=back_to_menu_kb(),
+                )
+            return
+
+        # Make sure the DB-side record is still in shape.
+        key_repo = VpnKeyRepository(session)
+        db_key = (
+            await key_repo.get_by_client_id(active.xui_client_id)
+            if active.xui_client_id
+            else None
+        )
+
+        xui = XUIClient()
+        try:
+            ok, status_block = await _verify_client_on_panel(xui, active)
+        finally:
+            await xui.close()
+
+    target, is_subscription = _resolve_key_target(active)
+
+    if ok:
+        header = (
+            "✅ <b>Ваш ключ корректен и работает</b>\n\n"
+            "Перевыпуск не требуется — продолжайте пользоваться уже "
+            "добавленной в приложение ссылкой."
+        )
+        body_parts = [header, "", status_block]
+        if db_key is not None and not db_key.is_active:
+            body_parts.append(
+                "\nℹ️ <i>В нашей базе ключ был помечен неактивным — "
+                "обратитесь в поддержку, если возникают проблемы с подключением.</i>"
+            )
+        if target:
+            body_parts.append("")
+            if is_subscription:
+                body_parts.append("🔗 <b>Ваша ссылка-подписка:</b>")
+            else:
+                body_parts.append("🔑 <b>Ваш ключ VLESS:</b>")
+            body_parts.append(code(target))
+        text = "\n".join(body_parts)
+    else:
+        text = (
+            "⚠️ <b>Проблема с ключом</b>\n\n"
+            f"{status_block}\n\n"
+            "Если ошибка повторится — напишите в поддержку."
+        )
+
+    kb = subscription_kb(has_active=True, is_legacy=not is_subscription)
+    if call.message:
+        try:
+            await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await call.message.answer(text, parse_mode="HTML", reply_markup=kb)

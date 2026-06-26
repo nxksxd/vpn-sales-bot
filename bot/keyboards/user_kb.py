@@ -152,20 +152,15 @@ def subscription_kb(
 ) -> InlineKeyboardMarkup:
     """Inline keyboard for the subscription / key view.
 
-    ``is_legacy=True`` adds an "Update key" button that triggers migration
-    of an old subscription (created before ``sub_id`` was introduced) to
-    the modern ``/sub/<subId>`` URL format.
+    Кнопка «🔄 Обновить ключ VLESS» теперь всегда доступна при активной
+    подписке. По нажатию ключ НЕ перевыпускается — выполняется только
+    проверка, что текущий ключ корректен и активен на сервере 3x-ui.
+
+    Для устаревших подписок (``is_legacy=True``) дополнительно
+    показывается кнопка миграции на новый формат ссылки-подписки.
     """
     rows = []
     if has_active:
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="🔁 Продлить в 1 клик",
-                    callback_data="sub:renew_quick",
-                )
-            ]
-        )
         rows.append(
             [
                 InlineKeyboardButton(
@@ -179,6 +174,14 @@ def subscription_kb(
                 InlineKeyboardButton(
                     text="📱 QR-код ключа",
                     callback_data="sub:qr",
+                )
+            ]
+        )
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="🔄 Обновить ключ VLESS",
+                    callback_data="sub:check_key",
                 )
             ]
         )
