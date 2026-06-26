@@ -233,11 +233,19 @@ class SubscriptionService:
             * 1000
         )
 
+        # Determine XTLS flow: actually use settings.xui_flow only when the
+        # inbound runs REALITY (the standard combo VLESS+REALITY+Vision).
+        # For TLS/WS/etc., flow must stay empty or 3x-ui will reject the
+        # connection.
+        inbound_data = _parse_inbound(await self.xui.get_inbound(effective_inbound_id))
+        stream_security = (inbound_data.get("stream_obj") or {}).get("security", "")
+        effective_flow = settings.xui_flow if stream_security == "reality" else ""
+
         client_data = {
             "id": client_uuid,
             "email": email,
             "enable": True,
-            "flow": "",
+            "flow": effective_flow,
             "limitIp": settings.device_limit,
             "totalGB": traffic_bytes,
             "expiryTime": expiry_ms,
@@ -255,7 +263,6 @@ class SubscriptionService:
             )
             raise _xui_error("add_client", e)
 
-        inbound_data = _parse_inbound(await self.xui.get_inbound(effective_inbound_id))
         port = inbound_data.get("port", 443)
         vless_link = build_vless_link(
             uuid=client_uuid,
@@ -263,6 +270,7 @@ class SubscriptionService:
             port=port,
             inbound=inbound_data,
             email=email,
+            flow=effective_flow,
         )
 
 
@@ -648,12 +656,15 @@ class SubscriptionService:
         inbound_data = _parse_inbound(await self.xui.get_inbound(sub.xui_inbound_id))
         port = inbound_data.get("port", 443)
         email = result.get("email", f"user_{sub.user_id}")
+        stream_security = (inbound_data.get("stream_obj") or {}).get("security", "")
+        effective_flow = settings.xui_flow if stream_security == "reality" else ""
         new_link = build_vless_link(
             uuid=new_uuid,
             server=server,
             port=port,
             inbound=inbound_data,
             email=email,
+            flow=effective_flow,
         )
 
         sub.xui_client_id = new_uuid

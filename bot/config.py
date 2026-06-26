@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     xui_username: str = "admin"
     xui_password: str = ""
     xui_inbound_id: int = 1
+    # XTLS flow для VLESS-клиентов (актуально для REALITY-инбаундов).
+    # Стандарт для VLESS+REALITY — "xtls-rprx-vision". Поставьте пустую
+    # строку, если ваш inbound его не использует (например, VLESS+TLS+WS).
+    xui_flow: str = "xtls-rprx-vision"
 
     # Subscription URL (3x-ui sub link). If empty — derived from xui_url.
     # Example public form: https://panel.example.com:2096/sub/<subId>
