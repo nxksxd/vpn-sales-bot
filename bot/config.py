@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     xui_password: str = ""
     xui_inbound_id: int = 1
 
+    # Subscription URL (3x-ui sub link). If empty — derived from xui_url.
+    # Example public form: https://panel.example.com:2096/sub/<subId>
+    subscription_url_base: str = ""
+    # Path prefix configured in 3x-ui "Subscription" settings (default: /sub/).
+    subscription_path: str = "/sub/"
+
     # Subscription plans (prices in rubles)
     plan_1m_rub: int = 200
     plan_3m_rub: int = 500
@@ -171,6 +177,21 @@ class Settings(BaseSettings):
             plan["promo_code"] = (promo_code or "").strip().upper()
             plan["promo_discount_percent"] = discount_percent
         return plan
+
+    def subscription_url(self, sub_id: str | None) -> str | None:
+        """Build the public 3x-ui subscription URL for the given subId.
+
+        Returns ``None`` when ``sub_id`` is empty so callers can fall back to
+        the raw VLESS link (legacy subscriptions created before this field
+        was introduced).
+        """
+        if not sub_id:
+            return None
+        base = (self.subscription_url_base or self.xui_url or "").rstrip("/")
+        if not base:
+            return None
+        path = "/" + (self.subscription_path or "/sub/").strip("/") + "/"
+        return f"{base}{path}{sub_id}"
 
     def _discount(self, plan: str) -> int:
         base = self.plan_1m_rub

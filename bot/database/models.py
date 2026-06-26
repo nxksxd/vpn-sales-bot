@@ -77,6 +77,13 @@ class Subscription(Base):
     expires_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, index=True)
     xui_client_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     xui_inbound_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # 3x-ui ``subId`` — the identifier exposed via the panel's
+    # ``/sub/<subId>`` endpoint. Stored unencrypted because it's a
+    # non-sensitive opaque token (the actual configs behind it are
+    # protected by the panel's auth/CDN setup).
+    sub_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     region_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     promo_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     is_trial: Mapped[bool] = mapped_column(Boolean, default=False)

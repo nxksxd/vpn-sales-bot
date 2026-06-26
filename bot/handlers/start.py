@@ -237,19 +237,35 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
         elif callback_data == "sub:show_key":
             sub_repo = SubscriptionRepository(session)
             active = await sub_repo.get_active_by_user(user.id)
-            if active is None or not active.vless_link:
+            sub_url = settings.subscription_url(active.sub_id) if active else None
+            if active is None or (not sub_url and not active.vless_link):
                 await message.answer(
-                    "\u274c У вас нет активного ключа.\n"
-                    "Купите подписку чтобы получить ключ.",
+                    "🔑 <b>У вас пока нет активного ключа</b>\n\n"
+                    "Оформите подписку, и ключ появится в этом меню.",
                     parse_mode="HTML",
                     reply_markup=back_to_menu_kb(),
                 )
+            elif sub_url:
+                msg = (
+                    "🔗 <b>Ваша ссылка-подписка</b>\n\n"
+                    "Скопируйте её и добавьте в приложение (V2RayTun, Hiddify, "
+                    "v2rayNG, Streisand и т.п.) как <b>«Subscription»</b> / "
+                    "<b>«Подписка»</b>:\n\n"
+                    f"{code(sub_url)}\n\n"
+                    "📱 <i>Тапните по ссылке — она скопируется. "
+                    "Конфиг будет обновляться автоматически.</i>"
+                )
+                await message.answer(
+                    msg, parse_mode="HTML", reply_markup=subscription_kb(has_active=True)
+                )
             else:
                 msg = (
-                    "\U0001f511 <b>Ваш ключ VLESS</b>\n\n"
-                    "Скопируйте ссылку ниже и вставьте в приложение:\n\n"
+                    "🔑 <b>Ваш ключ VLESS</b>\n\n"
+                    "Скопируйте ссылку ниже и добавьте её в приложение "
+                    "как <b>конфиг VLESS</b>:\n\n"
                     f"{code(active.vless_link)}\n\n"
-                    "\U0001f4f1 <i>Нажмите на ссылку чтобы скопировать</i>"
+                    "ℹ️ <i>Это старый формат ключа. Для удобной ссылки-подписки "
+                    "нажмите «Обновить ключ» в меню подписки.</i>"
                 )
                 await message.answer(
                     msg, parse_mode="HTML", reply_markup=subscription_kb(has_active=True)

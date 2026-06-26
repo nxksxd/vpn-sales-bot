@@ -1,8 +1,18 @@
-"""Subscription lifecycle management."""
+"""Subscription lifecycle management.
+
+All user-visible errors raised from this module are instances of
+:class:`UserFacingError`, whose ``user_message`` is a polished, ready-to-send
+Russian text that handlers can forward verbatim — no string surgery needed.
+
+Internal/technical failures still bubble up as plain ``Exception`` /
+``ValueError`` so observability (Sentry, logs) sees the original payload.
+"""
 
 from __future__ import annotations
 
+import datetime
 import json
+import secrets
 import uuid as uuid_mod
 from typing import Optional
 
@@ -18,6 +28,80 @@ from bot.database.repositories.transaction import TransactionRepository
 from bot.database.repositories.user import UserRepository
 from bot.database.repositories.vpn_key import VpnKeyRepository
 from bot.services.xui_client import XUIClient, XuiError, build_vless_link
+from bot.utils.formatters import fmt_rub
+
+
+# ── User-facing error type ───────────────────────────────────────────
+
+
+class UserFacingError(ValueError):
+    """An error whose ``user_message`` is safe to show to end users as-is.
+
+    Inherits from ``ValueError`` so existing ``except ValueError`` blocks in
+    handlers continue to catch it without code changes.
+    """
+
+    def __init__(self, user_message: str, *, log_detail: str | None = None) -> None:
+        super().__init__(log_detail or user_message)
+        self.user_message = user_message
+
+
+def _insufficient_balance_error(have: int, need: int) -> UserFacingError:
+    short = max(0, need - have)
+    return UserFacingError(
+        "💸 <b>Недостаточно средств</b>\n\n"
+        f"На балансе: <b>{fmt_rub(have)}</b>\n"
+        f"Нужно: <b>{fmt_rub(need)}</b>\n"
+        f"Не хватает: <b>{fmt_rub(short)}</b>\n\n"
+        "Пополните баланс в разделе «💰 Пополнить баланс» и попробуйте снова.",
+        log_detail=f"insufficient_balance have={have} need={need}",
+    )
+
+
+def _xui_error(action: str, exc: XuiError) -> UserFacingError:
+    """Wrap a low-level 3x-ui failure into a friendly message."""
+    return UserFacingError(
+        "⚠️ <b>Не удалось связаться с VPN-сервером</b>\n\n"
+        "Сервис временно недоступен. Пожалуйста, попробуйте через пару минут, "
+        "а если проблема не уйдёт — напишите в поддержку.",
+        log_detail=f"xui {action} failed: {exc.message}",
+    )
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+def _generate_sub_id(telegram_id: int) -> str:
+    """Opaque, hard-to-guess token used as 3x-ui ``subId``.
+
+    Uses ``secrets`` (not the UUID4 used for the client itself) so the
+    subscription URL is not derivable from the client UUID, even if the
+    latter ever leaks. Keep it short (<=24 chars) so the resulting URL
+    is comfortable to copy.
+    """
+    return f"u{telegram_id}{secrets.token_urlsafe(9)}"
+
+
+def _parse_inbound(inbound: dict | None) -> dict:
+    """Decode the JSON fields 3x-ui returns as strings."""
+    data: dict = dict(inbound or {})
+    if isinstance(data.get("settings"), str):
+        try:
+            data["settings_obj"] = json.loads(data["settings"])
+        except (ValueError, TypeError):
+            data["settings_obj"] = {}
+    stream_raw = data.get("streamSettings") or data.get("stream_settings")
+    if isinstance(stream_raw, str):
+        try:
+            data["stream_obj"] = json.loads(stream_raw)
+        except (ValueError, TypeError):
+            data["stream_obj"] = {}
+    elif isinstance(stream_raw, dict):
+        data["stream_obj"] = stream_raw
+    return data
+
+
+# ── Service ──────────────────────────────────────────────────────────
 
 
 class SubscriptionService:
@@ -54,7 +138,10 @@ class SubscriptionService:
     ) -> Optional[Subscription]:
         plan = settings.plans.get(plan_type)
         if plan is None:
-            raise ValueError(f"Unknown plan: {plan_type}")
+            raise UserFacingError(
+                "⚠️ Этот тариф больше не доступен. Выберите другой в меню «🛒 Купить подписку».",
+                log_detail=f"unknown plan: {plan_type}",
+            )
 
         # Trial overrides: free, with configurable duration and traffic limit.
         if is_trial:
@@ -70,34 +157,45 @@ class SubscriptionService:
 
         user = await self.user_repo.get_by_telegram_id(telegram_id)
         if user is None:
-            raise ValueError("User not found")
-        if user.is_banned:
-            raise ValueError("User is banned")
-        if not is_trial and user.balance < plan["rub"]:
-            raise ValueError(
-                f"Insufficient balance: {user.balance} < {plan['rub']}"
+            raise UserFacingError(
+                "❌ Профиль не найден. Отправьте /start и попробуйте снова.",
+                log_detail="user not found",
             )
+        if user.is_banned:
+            raise UserFacingError(
+                "🚫 Ваш аккаунт заблокирован. Свяжитесь с поддержкой.",
+                log_detail="user banned",
+            )
+        if not is_trial and user.balance < plan["rub"]:
+            raise _insufficient_balance_error(user.balance, plan["rub"])
 
         if idempotency_key:
             existing_tx = await self.tx_repo.get_by_idempotency_key(idempotency_key)
             if existing_tx is not None:
-                raise ValueError("Purchase already processed")
+                raise UserFacingError(
+                    "✅ Эта покупка уже была обработана ранее. Загляните в «🔑 Мои подписки».",
+                    log_detail="duplicate idempotency_key",
+                )
 
         existing = await self.sub_repo.get_active_by_user(telegram_id)
         if existing is not None:
-            raise ValueError("Active subscription already exists. Renew instead.")
+            raise UserFacingError(
+                "ℹ️ У вас уже есть активная подписка.\n"
+                "Чтобы добавить дни — воспользуйтесь кнопкой «🔄 Продлить подписку».",
+                log_detail="active subscription exists",
+            )
 
         client_uuid = str(uuid_mod.uuid4())
         email = f"user_{telegram_id}_{client_uuid[:8]}"
+        sub_id = _generate_sub_id(telegram_id)
         traffic_bytes = effective_traffic_gb * (1024 ** 3) if effective_traffic_gb > 0 else 0
         expiry_ms = int(
             (
-                __import__("datetime").datetime.utcnow()
-                + __import__("datetime").timedelta(days=plan["days"])
+                datetime.datetime.utcnow()
+                + datetime.timedelta(days=plan["days"])
             ).timestamp()
             * 1000
         )
-
 
         client_data = {
             "id": client_uuid,
@@ -108,32 +206,17 @@ class SubscriptionService:
             "totalGB": traffic_bytes,
             "expiryTime": expiry_ms,
             "tgId": telegram_id,
-            "subId": "",
+            "subId": sub_id,
         }
 
         try:
             await self.xui.add_client(settings.xui_inbound_id, client_data)
         except XuiError as e:
             logger.error("Failed to create 3X-UI client: {}", e)
-            raise ValueError(f"Failed to create VPN key: {e.message}")
+            raise _xui_error("add_client", e)
 
         server = settings.server_address or settings.xui_url.split("://")[-1].split(":")[0]
-        inbound = await self.xui.get_inbound(settings.xui_inbound_id)
-        inbound_data = inbound or {}
-        if isinstance(inbound_data.get("settings"), str):
-            try:
-                inbound_data["settings_obj"] = json.loads(inbound_data["settings"])
-            except (ValueError, TypeError):
-                inbound_data["settings_obj"] = {}
-        stream_raw = inbound_data.get("streamSettings") or inbound_data.get("stream_settings")
-        if isinstance(stream_raw, str):
-            try:
-                inbound_data["stream_obj"] = json.loads(stream_raw)
-            except (ValueError, TypeError):
-                inbound_data["stream_obj"] = {}
-        elif isinstance(stream_raw, dict):
-            inbound_data["stream_obj"] = stream_raw
-
+        inbound_data = _parse_inbound(await self.xui.get_inbound(settings.xui_inbound_id))
         port = inbound_data.get("port", 443)
         vless_link = build_vless_link(
             uuid=client_uuid,
@@ -150,7 +233,9 @@ class SubscriptionService:
                 allow_negative=False,
             )
             if user_after_debit is None:
-                raise ValueError("Insufficient balance during purchase")
+                # Race: someone spent the balance between our check and the
+                # debit. Show the same friendly message.
+                raise _insufficient_balance_error(user.balance, plan["rub"])
 
             try:
                 await self.tx_repo.create(
@@ -168,7 +253,10 @@ class SubscriptionService:
                 )
             except IntegrityError as e:
                 await self.user_repo.update_balance(telegram_id, plan["rub"])
-                raise ValueError("Purchase already processed") from e
+                raise UserFacingError(
+                    "✅ Эта покупка уже была обработана ранее.",
+                    log_detail="idempotency conflict",
+                ) from e
         elif idempotency_key:
             # Free purchase (e.g. trial): record a zero-amount transaction so
             # the idempotency key prevents repeated activations.
@@ -187,7 +275,10 @@ class SubscriptionService:
                     rate_snapshot=str(settings.stars_to_rub_rate),
                 )
             except IntegrityError as e:
-                raise ValueError("Purchase already processed") from e
+                raise UserFacingError(
+                    "✅ Trial уже был активирован.",
+                    log_detail="trial idempotency conflict",
+                ) from e
 
         sub = await self.sub_repo.create(
             user_id=telegram_id,
@@ -199,10 +290,10 @@ class SubscriptionService:
             vless_link=vless_link,
             traffic_limit_gb=effective_traffic_gb,
             is_trial=is_trial,
+            sub_id=sub_id,
         )
 
         await self.key_repo.create(
-
             subscription_id=sub.id,
             user_id=telegram_id,
             xui_client_id=client_uuid,
@@ -212,10 +303,11 @@ class SubscriptionService:
         )
 
         logger.info(
-            "Subscription purchased: user={} plan={} uuid={}",
+            "Subscription purchased: user={} plan={} uuid={} sub_id={}",
             telegram_id,
             plan_type,
             client_uuid,
+            sub_id,
         )
         return sub
 
@@ -228,20 +320,27 @@ class SubscriptionService:
     ) -> Optional[Subscription]:
         plan = settings.plans.get(plan_type)
         if plan is None:
-            raise ValueError(f"Unknown plan: {plan_type}")
+            raise UserFacingError(
+                "⚠️ Этот тариф больше не доступен. Выберите другой в меню «🔄 Продлить подписку».",
+                log_detail=f"unknown plan: {plan_type}",
+            )
 
         user = await self.user_repo.get_by_telegram_id(telegram_id)
         if user is None:
-            raise ValueError("User not found")
-        if user.balance < plan["rub"]:
-            raise ValueError(
-                f"Insufficient balance: {user.balance} < {plan['rub']}"
+            raise UserFacingError(
+                "❌ Профиль не найден. Отправьте /start и попробуйте снова.",
+                log_detail="user not found",
             )
+        if user.balance < plan["rub"]:
+            raise _insufficient_balance_error(user.balance, plan["rub"])
 
         if idempotency_key:
             existing_tx = await self.tx_repo.get_by_idempotency_key(idempotency_key)
             if existing_tx is not None:
-                raise ValueError("Renewal already processed")
+                raise UserFacingError(
+                    "✅ Это продление уже было обработано ранее.",
+                    log_detail="duplicate idempotency_key",
+                )
 
         existing = await self.sub_repo.get_active_by_user(telegram_id)
         if existing is None:
@@ -255,8 +354,6 @@ class SubscriptionService:
 
         if existing.xui_client_id:
             try:
-                import datetime
-
                 new_expiry = existing.expires_at + datetime.timedelta(days=plan["days"])
                 expiry_ms = int(new_expiry.timestamp() * 1000)
                 key = await self.key_repo.get_by_client_id(existing.xui_client_id)
@@ -273,7 +370,7 @@ class SubscriptionService:
                 )
             except XuiError as e:
                 logger.error("Failed to update 3X-UI client expiry: {}", e)
-                raise ValueError(f"Failed to renew VPN access in 3x-ui: {e.message}")
+                raise _xui_error("update_client", e)
 
         user_after_debit = await self.user_repo.update_balance(
             telegram_id,
@@ -281,7 +378,7 @@ class SubscriptionService:
             allow_negative=False,
         )
         if user_after_debit is None:
-            raise ValueError("Insufficient balance during renewal")
+            raise _insufficient_balance_error(user.balance, plan["rub"])
 
         try:
             await self.tx_repo.create(
@@ -295,7 +392,10 @@ class SubscriptionService:
             )
         except IntegrityError as e:
             await self.user_repo.update_balance(telegram_id, plan["rub"])
-            raise ValueError("Renewal already processed") from e
+            raise UserFacingError(
+                "✅ Это продление уже было обработано ранее.",
+                log_detail="idempotency conflict",
+            ) from e
 
         sub = await self.sub_repo.extend(existing.id, plan["days"])
         logger.info(
@@ -325,7 +425,7 @@ class SubscriptionService:
                 logger.error(
                     "Failed to disable 3X-UI client {}: {}", sub.xui_client_id, e
                 )
-                raise ValueError(f"Failed to deactivate VPN access in 3x-ui: {e.message}")
+                raise _xui_error("update_client", e)
 
         await self.sub_repo.set_status(sub.id, SubscriptionStatus.EXPIRED)
         await self.key_repo.deactivate_by_subscription(sub.id)
@@ -355,7 +455,7 @@ class SubscriptionService:
                     },
                 )
             except XuiError as e:
-                raise ValueError(f"Failed to suspend VPN access in 3x-ui: {e.message}")
+                raise _xui_error("update_client", e)
         await self.sub_repo.mark_suspended(sub.id)
 
     async def reactivate_key(self, sub: Subscription) -> None:
@@ -381,37 +481,25 @@ class SubscriptionService:
                     sub.xui_client_id,
                     e,
                 )
-                raise ValueError(f"Failed to reactivate VPN access in 3x-ui: {e.message}")
+                raise _xui_error("update_client", e)
 
     async def regenerate_key(self, sub: Subscription) -> Optional[str]:
         if not sub.xui_client_id or not sub.xui_inbound_id:
-            raise ValueError("No VPN key associated with subscription")
+            raise UserFacingError(
+                "⚠️ К этой подписке не привязан VPN-ключ. Обратитесь в поддержку.",
+                log_detail="no client_id on subscription",
+            )
 
         try:
             result = await self.xui.regenerate_client(
                 sub.xui_inbound_id, sub.xui_client_id
             )
         except XuiError as e:
-            raise ValueError(f"Failed to regenerate key: {e.message}")
+            raise _xui_error("regenerate_client", e)
 
         new_uuid = result["new_uuid"]
         server = settings.server_address or settings.xui_url.split("://")[-1].split(":")[0]
-        inbound = await self.xui.get_inbound(sub.xui_inbound_id)
-        inbound_data = inbound or {}
-        if isinstance(inbound_data.get("settings"), str):
-            try:
-                inbound_data["settings_obj"] = json.loads(inbound_data["settings"])
-            except (ValueError, TypeError):
-                inbound_data["settings_obj"] = {}
-        stream_raw = inbound_data.get("streamSettings") or inbound_data.get("stream_settings")
-        if isinstance(stream_raw, str):
-            try:
-                inbound_data["stream_obj"] = json.loads(stream_raw)
-            except (ValueError, TypeError):
-                inbound_data["stream_obj"] = {}
-        elif isinstance(stream_raw, dict):
-            inbound_data["stream_obj"] = stream_raw
-
+        inbound_data = _parse_inbound(await self.xui.get_inbound(sub.xui_inbound_id))
         port = inbound_data.get("port", 443)
         email = result.get("email", f"user_{sub.user_id}")
         new_link = build_vless_link(

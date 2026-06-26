@@ -28,6 +28,7 @@ class SubscriptionRepository:
         vless_link: str,
         traffic_limit_gb: int = 0,
         is_trial: bool = False,
+        sub_id: Optional[str] = None,
     ) -> Subscription:
         now = datetime.datetime.utcnow()
         sub = Subscription(
@@ -39,6 +40,7 @@ class SubscriptionRepository:
             expires_at=now + datetime.timedelta(days=days),
             xui_client_id=xui_client_id,
             xui_inbound_id=xui_inbound_id,
+            sub_id=sub_id,
             vless_link=vless_link,
             traffic_limit_gb=traffic_limit_gb,
             is_trial=is_trial,

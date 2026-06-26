@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import html
-
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -25,7 +23,7 @@ from bot.keyboards.user_kb import (
 )
 from bot.keyboards.product_kb import region_select_kb
 from bot.services.notification import NotificationService
-from bot.services.subscription import SubscriptionService
+from bot.services.subscription import SubscriptionService, UserFacingError
 from bot.services.subscription_use_cases import SubscriptionUseCases
 from bot.services.xui_client import XUIClient
 from bot.utils.formatters import (
@@ -356,10 +354,19 @@ async def cb_confirm_buy(call: CallbackQuery, bot: Bot) -> None:
                 if promo is not None:
                     await uc.promo_repo.increment_usage(promo.id)
                 await session.commit()
-        except ValueError as e:
+        except UserFacingError as e:
             if call.message:
                 await call.message.edit_text(
-                    f"❌ <b>Ошибка:</b> {html.escape(str(e))}",
+                    e.user_message,
+                    parse_mode="HTML",
+                    reply_markup=back_to_menu_kb(),
+                )
+            return
+        except ValueError as e:
+            logger.warning("Purchase validation failed: {}", e)
+            if call.message:
+                await call.message.edit_text(
+                    "❌ Не удалось оформить подписку. Проверьте параметры и попробуйте снова.",
                     parse_mode="HTML",
                     reply_markup=back_to_menu_kb(),
                 )
@@ -456,10 +463,19 @@ async def cb_renew_plan(call: CallbackQuery, bot: Bot) -> None:
                 plan_type,
                 idempotency_key=f"manual-renew:{call.from_user.id}:{plan_type}",
             )
-        except ValueError as e:
+        except UserFacingError as e:
             if call.message:
                 await call.message.edit_text(
-                    f"\u274c <b>Ошибка:</b> {html.escape(str(e))}",
+                    e.user_message,
+                    parse_mode="HTML",
+                    reply_markup=back_to_menu_kb(),
+                )
+            return
+        except ValueError as e:
+            logger.warning("Renewal validation failed: {}", e)
+            if call.message:
+                await call.message.edit_text(
+                    "❌ Не удалось продлить подписку. Попробуйте ещё раз.",
                     parse_mode="HTML",
                     reply_markup=back_to_menu_kb(),
                 )
