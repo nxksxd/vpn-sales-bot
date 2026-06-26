@@ -321,6 +321,7 @@ class SubscriptionService:
             is_trial=is_trial,
             sub_id=sub_id,
             region_code=region_code,
+            promo_code=promo_code,
         )
 
         await self.key_repo.create(

@@ -29,6 +29,8 @@ class SubscriptionRepository:
         traffic_limit_gb: int = 0,
         is_trial: bool = False,
         sub_id: Optional[str] = None,
+        region_code: Optional[str] = None,
+        promo_code: Optional[str] = None,
     ) -> Subscription:
         now = datetime.datetime.utcnow()
         sub = Subscription(
@@ -44,6 +46,8 @@ class SubscriptionRepository:
             vless_link=vless_link,
             traffic_limit_gb=traffic_limit_gb,
             is_trial=is_trial,
+            region_code=region_code,
+            promo_code=promo_code,
         )
         self.session.add(sub)
         await self.session.commit()
