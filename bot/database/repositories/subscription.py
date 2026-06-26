@@ -27,6 +27,7 @@ class SubscriptionRepository:
         xui_inbound_id: int,
         vless_link: str,
         traffic_limit_gb: int = 0,
+        is_trial: bool = False,
     ) -> Subscription:
         now = datetime.datetime.utcnow()
         sub = Subscription(
@@ -40,6 +41,7 @@ class SubscriptionRepository:
             xui_inbound_id=xui_inbound_id,
             vless_link=vless_link,
             traffic_limit_gb=traffic_limit_gb,
+            is_trial=is_trial,
         )
         self.session.add(sub)
         await self.session.commit()

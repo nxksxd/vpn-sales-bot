@@ -140,29 +140,23 @@ async def cb_start_trial(call: CallbackQuery, bot: Bot) -> None:
                     reply_markup=back_to_menu_kb(),
                 )
             return
+        # Mark trial as used up-front so concurrent clicks can't double-activate.
         db_user.trial_used = True
         await session.commit()
 
         xui = XUIClient()
+        sub = None
         try:
             sub_service = SubscriptionService(session, xui)
-            sub = await sub_service.purchase(call.from_user.id, "1m", idempotency_key=f"trial:{call.from_user.id}")
-            if sub is not None:
-                sub.is_trial = True
-                sub.price_rub = 0
-                sub.expires_at = sub.starts_at + __import__("datetime").timedelta(days=settings.trial_days)
-                sub.traffic_limit_gb = settings.trial_traffic_limit_gb
-                await session.commit()
-                notif = NotificationService(bot, session)
-                await notif.send(
-                    call.from_user.id,
-                    "purchase_success",
-                    expires_at=fmt_date(sub.expires_at),
-                    price="0",
-                    balance=str(db_user.balance),
-                )
+            sub = await sub_service.purchase(
+                call.from_user.id,
+                "1m",
+                idempotency_key=f"trial:{call.from_user.id}",
+                is_trial=True,
+            )
         except Exception as e:
             logger.error("Trial activation failed: {}", e)
+            # Roll back the trial_used flag so user can retry.
             db_user.trial_used = False
             await session.commit()
             if call.message:
@@ -174,6 +168,16 @@ async def cb_start_trial(call: CallbackQuery, bot: Bot) -> None:
             return
         finally:
             await xui.close()
+
+        if sub is not None:
+            notif = NotificationService(bot, session)
+            await notif.send(
+                call.from_user.id,
+                "purchase_success",
+                expires_at=fmt_date(sub.expires_at),
+                price="0",
+                balance=str(db_user.balance),
+            )
 
     if call.message:
         await call.message.edit_text(

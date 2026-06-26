@@ -50,17 +50,30 @@ class SubscriptionService:
         telegram_id: int,
         plan_type: str,
         idempotency_key: str | None = None,
+        is_trial: bool = False,
     ) -> Optional[Subscription]:
         plan = settings.plans.get(plan_type)
         if plan is None:
             raise ValueError(f"Unknown plan: {plan_type}")
+
+        # Trial overrides: free, with configurable duration and traffic limit.
+        if is_trial:
+            plan = {
+                **plan,
+                "rub": 0,
+                "stars": 0,
+                "days": settings.trial_days,
+            }
+            effective_traffic_gb = settings.trial_traffic_limit_gb
+        else:
+            effective_traffic_gb = settings.traffic_limit_gb
 
         user = await self.user_repo.get_by_telegram_id(telegram_id)
         if user is None:
             raise ValueError("User not found")
         if user.is_banned:
             raise ValueError("User is banned")
-        if user.balance < plan["rub"]:
+        if not is_trial and user.balance < plan["rub"]:
             raise ValueError(
                 f"Insufficient balance: {user.balance} < {plan['rub']}"
             )
@@ -76,7 +89,7 @@ class SubscriptionService:
 
         client_uuid = str(uuid_mod.uuid4())
         email = f"user_{telegram_id}_{client_uuid[:8]}"
-        traffic_bytes = settings.traffic_limit_gb * (1024 ** 3) if settings.traffic_limit_gb > 0 else 0
+        traffic_bytes = effective_traffic_gb * (1024 ** 3) if effective_traffic_gb > 0 else 0
         expiry_ms = int(
             (
                 __import__("datetime").datetime.utcnow()
@@ -84,6 +97,7 @@ class SubscriptionService:
             ).timestamp()
             * 1000
         )
+
 
         client_data = {
             "id": client_uuid,
@@ -129,27 +143,51 @@ class SubscriptionService:
             email=email,
         )
 
-        user_after_debit = await self.user_repo.update_balance(
-            telegram_id,
-            -plan["rub"],
-            allow_negative=False,
-        )
-        if user_after_debit is None:
-            raise ValueError("Insufficient balance during purchase")
-
-        try:
-            await self.tx_repo.create(
-                user_id=telegram_id,
-                tx_type=TransactionType.PURCHASE,
-                amount_rub=-plan["rub"],
-                amount_stars=plan["stars"],
-                description=f"Подписка {plan['label']} ({plan_type})",
-                idempotency_key=idempotency_key,
-                rate_snapshot=str(settings.stars_to_rub_rate),
+        if plan["rub"] > 0:
+            user_after_debit = await self.user_repo.update_balance(
+                telegram_id,
+                -plan["rub"],
+                allow_negative=False,
             )
-        except IntegrityError as e:
-            await self.user_repo.update_balance(telegram_id, plan["rub"])
-            raise ValueError("Purchase already processed") from e
+            if user_after_debit is None:
+                raise ValueError("Insufficient balance during purchase")
+
+            try:
+                await self.tx_repo.create(
+                    user_id=telegram_id,
+                    tx_type=TransactionType.PURCHASE,
+                    amount_rub=-plan["rub"],
+                    amount_stars=plan["stars"],
+                    description=(
+                        f"Trial {plan['label']} ({plan_type})"
+                        if is_trial
+                        else f"Подписка {plan['label']} ({plan_type})"
+                    ),
+                    idempotency_key=idempotency_key,
+                    rate_snapshot=str(settings.stars_to_rub_rate),
+                )
+            except IntegrityError as e:
+                await self.user_repo.update_balance(telegram_id, plan["rub"])
+                raise ValueError("Purchase already processed") from e
+        elif idempotency_key:
+            # Free purchase (e.g. trial): record a zero-amount transaction so
+            # the idempotency key prevents repeated activations.
+            try:
+                await self.tx_repo.create(
+                    user_id=telegram_id,
+                    tx_type=TransactionType.PURCHASE,
+                    amount_rub=0,
+                    amount_stars=0,
+                    description=(
+                        f"Trial {plan['label']} ({plan_type})"
+                        if is_trial
+                        else f"Подписка {plan['label']} ({plan_type})"
+                    ),
+                    idempotency_key=idempotency_key,
+                    rate_snapshot=str(settings.stars_to_rub_rate),
+                )
+            except IntegrityError as e:
+                raise ValueError("Purchase already processed") from e
 
         sub = await self.sub_repo.create(
             user_id=telegram_id,
@@ -159,10 +197,12 @@ class SubscriptionService:
             xui_client_id=client_uuid,
             xui_inbound_id=settings.xui_inbound_id,
             vless_link=vless_link,
-            traffic_limit_gb=settings.traffic_limit_gb,
+            traffic_limit_gb=effective_traffic_gb,
+            is_trial=is_trial,
         )
 
         await self.key_repo.create(
+
             subscription_id=sub.id,
             user_id=telegram_id,
             xui_client_id=client_uuid,
