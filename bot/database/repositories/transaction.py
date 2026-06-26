@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 from typing import Optional, Sequence
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.models import Transaction
@@ -61,6 +61,24 @@ class TransactionRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def delete_by_idempotency_key(
+        self, idempotency_key: str, commit: bool = True
+    ) -> int:
+        """Удалить транзакцию по idempotency_key.
+
+        Возвращает кол-во удалённых строк. Используется, чтобы снять
+        блокировку повторной покупки после того, как соответствующая
+        подписка была удалена (вручную из БД или из админ-панели).
+        """
+        result = await self.session.execute(
+            delete(Transaction).where(
+                Transaction.idempotency_key == idempotency_key
+            )
+        )
+        if commit:
+            await self.session.commit()
+        return result.rowcount or 0
 
     async def get_user_history(
         self, user_id: int, limit: int = 20

@@ -194,7 +194,13 @@ class SubscriptionService:
         if not is_trial and user.balance < plan["rub"]:
             raise _insufficient_balance_error(user.balance, plan["rub"])
 
-        if idempotency_key:
+        # Идемпотентность: блокируем повтор только если у пользователя
+        # ДЕЙСТВИТЕЛЬНО есть активная подписка от предыдущего вызова.
+        # Если подписку удалили (вручную из БД или через админ-панель),
+        # старая транзакция не должна мешать пользователю купить заново.
+        existing = await self.sub_repo.get_active_by_user(telegram_id)
+
+        if idempotency_key and existing is not None:
             existing_tx = await self.tx_repo.get_by_idempotency_key(idempotency_key)
             if existing_tx is not None:
                 raise UserFacingError(
@@ -202,13 +208,18 @@ class SubscriptionService:
                     log_detail="duplicate idempotency_key",
                 )
 
-        existing = await self.sub_repo.get_active_by_user(telegram_id)
         if existing is not None:
             raise UserFacingError(
                 "ℹ️ У вас уже есть активная подписка.\n"
                 "Чтобы добавить дни — воспользуйтесь кнопкой «🔄 Продлить подписку».",
                 log_detail="active subscription exists",
             )
+
+        # Если активной подписки нет, но в БД осталась "висящая" транзакция
+        # с этим idempotency_key (например, после ручного удаления подписки),
+        # удалим её, чтобы повторная вставка не упала на UNIQUE-конфликте.
+        if idempotency_key:
+            await self.tx_repo.delete_by_idempotency_key(idempotency_key)
 
         client_uuid = str(uuid_mod.uuid4())
         email = f"user_{telegram_id}_{client_uuid[:8]}"
@@ -366,7 +377,11 @@ class SubscriptionService:
         if user.balance < plan["rub"]:
             raise _insufficient_balance_error(user.balance, plan["rub"])
 
-        if idempotency_key:
+        existing = await self.sub_repo.get_active_by_user(telegram_id)
+
+        # Идемпотентность только при наличии активной подписки —
+        # см. комментарий в purchase().
+        if idempotency_key and existing is not None:
             existing_tx = await self.tx_repo.get_by_idempotency_key(idempotency_key)
             if existing_tx is not None:
                 raise UserFacingError(
@@ -374,7 +389,6 @@ class SubscriptionService:
                     log_detail="duplicate idempotency_key",
                 )
 
-        existing = await self.sub_repo.get_active_by_user(telegram_id)
         if existing is None:
             return await self.purchase(
                 telegram_id,
