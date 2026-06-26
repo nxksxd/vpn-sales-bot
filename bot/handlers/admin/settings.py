@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 
 from aiogram import F, Router
@@ -208,7 +209,7 @@ async def receive_xui_value(message: Message, state: FSMContext) -> None:
     except Exception as e:
         logger.error("Failed to apply setting {}={}: {}", field, value, e)
         await message.answer(
-            f"\u274c Ошибка при сохранении: {e}",
+            f"\u274c Ошибка при сохранении: {html.escape(str(e))}",
             parse_mode="HTML",
         )
         return

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -357,7 +359,7 @@ async def cb_confirm_buy(call: CallbackQuery, bot: Bot) -> None:
         except ValueError as e:
             if call.message:
                 await call.message.edit_text(
-                    f"❌ <b>Ошибка:</b> {str(e)}",
+                    f"❌ <b>Ошибка:</b> {html.escape(str(e))}",
                     parse_mode="HTML",
                     reply_markup=back_to_menu_kb(),
                 )
@@ -457,7 +459,7 @@ async def cb_renew_plan(call: CallbackQuery, bot: Bot) -> None:
         except ValueError as e:
             if call.message:
                 await call.message.edit_text(
-                    f"\u274c <b>Ошибка:</b> {str(e)}",
+                    f"\u274c <b>Ошибка:</b> {html.escape(str(e))}",
                     parse_mode="HTML",
                     reply_markup=back_to_menu_kb(),
                 )
