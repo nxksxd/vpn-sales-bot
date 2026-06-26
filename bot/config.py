@@ -73,7 +73,15 @@ class Settings(BaseSettings):
     # Observability
     sentry_dsn: str = ""  # empty = Sentry disabled
 
-    model_config = {"env_file": str(BASE_DIR / ".env"), "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": str(BASE_DIR / ".env"),
+        "env_file_encoding": "utf-8",
+        # Ignore variables in .env that are meant for other services
+        # (e.g. POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB consumed by the
+        # postgres container via docker-compose). Without this, pydantic v2
+        # raises "Extra inputs are not permitted".
+        "extra": "ignore",
+    }
 
     @property
     def notify_days_list(self) -> List[int]:
