@@ -17,8 +17,26 @@ class SubscriptionUseCases:
         self.promo_repo = PromoCodeRepository(session)
         self.region_repo = ServerRegionRepository(session)
 
-    async def purchase(self, user_id: int, plan_type: str, idempotency_key: str | None = None):
-        return await self.service.purchase(user_id, plan_type, idempotency_key=idempotency_key)
+    async def purchase(
+        self,
+        user_id: int,
+        plan_type: str,
+        idempotency_key: str | None = None,
+        *,
+        inbound_id: int | None = None,
+        server_address: str | None = None,
+        region_code: str | None = None,
+        promo_code: str | None = None,
+    ):
+        return await self.service.purchase(
+            user_id,
+            plan_type,
+            idempotency_key=idempotency_key,
+            inbound_id=inbound_id,
+            server_address=server_address,
+            region_code=region_code,
+            promo_code=promo_code,
+        )
 
     async def renew(
         self,

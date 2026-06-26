@@ -466,16 +466,20 @@ async def cb_confirm_buy(call: CallbackQuery, bot: Bot) -> None:
             uc = SubscriptionUseCases(session, xui)
             promo = await uc.resolve_promo(promo_code)
             region = await uc.resolve_region(region_code)
+            # Provision on the chosen region's inbound/server up-front so the
+            # 3X-UI client and the VLESS link actually point to that country —
+            # patching the DB row after the fact left link/inbound mismatched.
             sub = await uc.purchase(
                 call.from_user.id,
                 plan_type,
                 idempotency_key=f"purchase:{call.from_user.id}:{plan_type}:{region_code}:{promo_code or 'none'}",
+                inbound_id=int(region.inbound_id) if region is not None else None,
+                server_address=region.server_address if region is not None else None,
+                region_code=region.code if region is not None else region_code,
+                promo_code=promo_code,
             )
             if sub is not None:
-                sub.region_code = region_code
                 sub.promo_code = promo_code
-                if region is not None:
-                    sub.xui_inbound_id = int(region.inbound_id)
                 if promo is not None:
                     await uc.promo_repo.increment_usage(promo.id)
                 await session.commit()
