@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
@@ -25,6 +26,16 @@ router = Router(name="admin_settings")
 
 class XuiSettingsStates(StatesGroup):
     waiting_value = State()
+
+
+async def _safe_edit_text(message: Message, text: str, **kwargs) -> None:
+    """edit_text wrapper that silently ignores 'message is not modified'."""
+    try:
+        await message.edit_text(text, **kwargs)
+    except TelegramBadRequest as exc:
+        if "message is not modified" in str(exc).lower():
+            return
+        raise
 
 
 # ── Helpers ────────────────────────────────────────────────────────
@@ -247,7 +258,7 @@ async def cb_regions_settings(call: CallbackQuery) -> None:
         text = "\n".join(lines)
 
     if call.message:
-        await call.message.edit_text(text, parse_mode="HTML", reply_markup=admin_xui_settings_kb())
+        await _safe_edit_text(call.message, text, parse_mode="HTML", reply_markup=admin_xui_settings_kb())
 
 
 @router.callback_query(F.data == "adm:promos")
@@ -269,7 +280,7 @@ async def cb_promos_settings(call: CallbackQuery) -> None:
         text = "\n".join(lines)
 
     if call.message:
-        await call.message.edit_text(text, parse_mode="HTML", reply_markup=admin_xui_settings_kb())
+        await _safe_edit_text(call.message, text, parse_mode="HTML", reply_markup=admin_xui_settings_kb())
 
 
 @router.callback_query(F.data == "adm:set:test")

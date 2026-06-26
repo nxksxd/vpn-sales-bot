@@ -76,20 +76,40 @@ class UserRepository:
         )
         user = result.scalar_one_or_none()
         if user is None:
-            # As a last resort, retry the insert once (covers referral_code
-            # collision when the row genuinely did not exist).
-            user = User(
-                telegram_id=telegram_id,
-                username=username,
-                first_name=first_name,
-                language_code=language_code,
-                referral_code=_generate_referral_code(),
-                last_active=now,
-            )
-            self.session.add(user)
-            await self.session.commit()
-            await self.session.refresh(user)
-            return user
+            # As a last resort, retry the insert a few times. This covers
+            # the rare case of a referral_code collision when the row truly
+            # did not exist, AND a concurrent insert that finished between
+            # our SELECT and INSERT (race).
+            for _ in range(3):
+                try:
+                    stmt = (
+                        pg_insert(User.__table__)
+                        .values(
+                            telegram_id=telegram_id,
+                            username=username,
+                            first_name=first_name,
+                            language_code=language_code,
+                            referral_code=_generate_referral_code(),
+                            last_active=now,
+                        )
+                        .on_conflict_do_nothing(index_elements=[User.telegram_id])
+                    )
+                    await self.session.execute(stmt)
+                    await self.session.commit()
+                except IntegrityError:
+                    await self.session.rollback()
+                    continue
+
+                result = await self.session.execute(
+                    select(User).where(User.telegram_id == telegram_id)
+                )
+                user = result.scalar_one_or_none()
+                if user is not None:
+                    break
+            if user is None:
+                raise RuntimeError(
+                    f"Failed to get_or_create user telegram_id={telegram_id}"
+                )
 
         # Refresh activity/profile fields if another request created the row.
         user.username = username
