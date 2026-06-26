@@ -147,7 +147,15 @@ def topup_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def subscription_kb(has_active: bool = False) -> InlineKeyboardMarkup:
+def subscription_kb(
+    has_active: bool = False, is_legacy: bool = False
+) -> InlineKeyboardMarkup:
+    """Inline keyboard for the subscription / key view.
+
+    ``is_legacy=True`` adds an "Update key" button that triggers migration
+    of an old subscription (created before ``sub_id`` was introduced) to
+    the modern ``/sub/<subId>`` URL format.
+    """
     rows = []
     if has_active:
         rows.append(
@@ -174,6 +182,15 @@ def subscription_kb(has_active: bool = False) -> InlineKeyboardMarkup:
                 )
             ]
         )
+        if is_legacy:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text="🆕 Обновить ключ (новая ссылка-подписка)",
+                        callback_data="sub:upgrade_key",
+                    )
+                ]
+            )
         rows.append(
             [
                 InlineKeyboardButton(

@@ -207,7 +207,7 @@ async def cb_subscriptions(call: CallbackQuery) -> None:
             f"\u23f3 Осталось: <b>{pluralize_days(remaining)}</b>\n"
             f"\U0001f4ca Лимит трафика: {fmt_traffic_limit(active.traffic_limit_gb)}\n"
         )
-        kb = subscription_kb(has_active=True)
+        kb = subscription_kb(has_active=True, is_legacy=not active.sub_id)
     else:
         text = (
             "🔑 <b>Мои подписки</b>\n\n"

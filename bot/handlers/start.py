@@ -195,7 +195,13 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
                     f"⏳ Осталось: <b>{days_left} дн.</b>\n"
                     f"📶 Трафик: {fmt_traffic_limit(active.traffic_limit_gb)}\n"
                 )
-                await message.answer(msg, parse_mode="HTML", reply_markup=subscription_kb(has_active=True))
+                await message.answer(
+                    msg,
+                    parse_mode="HTML",
+                    reply_markup=subscription_kb(
+                        has_active=True, is_legacy=not active.sub_id
+                    ),
+                )
             else:
                 await message.answer(
                     "\U0001f511 <b>Мои подписки</b>\n\n"

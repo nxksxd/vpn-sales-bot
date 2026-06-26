@@ -483,6 +483,90 @@ class SubscriptionService:
                 )
                 raise _xui_error("update_client", e)
 
+    async def upgrade_to_subscription_link(self, sub: Subscription) -> str:
+        """Assign a ``subId`` to a legacy subscription and return its public URL.
+
+        For subscriptions created before the ``sub_id`` field was introduced
+        we never told 3x-ui to bind a subscription token to the client, so
+        the panel can't serve a ``/sub/<subId>`` URL for them. This method:
+
+        1. Generates a fresh, opaque ``subId``.
+        2. Pushes it to 3x-ui via ``update_client`` (keeping all other
+           client attributes intact — expiry, traffic limit, etc.).
+        3. Persists the value in our DB so :func:`settings.subscription_url`
+           can render the user-facing link on subsequent requests.
+
+        Idempotent: if the subscription already has a ``sub_id``, we simply
+        return the existing subscription URL without touching 3x-ui.
+        """
+        if not sub.xui_client_id or not sub.xui_inbound_id:
+            raise UserFacingError(
+                "⚠️ К этой подписке не привязан VPN-ключ. Обратитесь в поддержку.",
+                log_detail="no client_id on subscription",
+            )
+
+        if sub.sub_id:
+            existing_url = settings.subscription_url(sub.sub_id)
+            if existing_url:
+                return existing_url
+
+        # Fetch the current client payload from the inbound so we don't
+        # accidentally drop fields (expiryTime, totalGB, limitIp, tgId, …).
+        inbound_raw = await self.xui.get_inbound(sub.xui_inbound_id)
+        inbound_data = _parse_inbound(inbound_raw)
+        clients = (inbound_data.get("settings_obj") or {}).get("clients") or []
+        current = next(
+            (c for c in clients if c.get("id") == sub.xui_client_id), None
+        )
+
+        key = await self.key_repo.get_by_client_id(sub.xui_client_id)
+        email = (current or {}).get("email") or (key.email if key else f"user_{sub.user_id}")
+
+        new_sub_id = _generate_sub_id(sub.user_id)
+
+        # Build a complete client payload — start from what 3x-ui already
+        # has so behaviour stays identical, just attach ``subId``.
+        payload = dict(current or {})
+        payload.update(
+            {
+                "id": sub.xui_client_id,
+                "email": email,
+                "enable": True,
+                "subId": new_sub_id,
+            }
+        )
+
+        try:
+            await self.xui.update_client(
+                sub.xui_inbound_id, sub.xui_client_id, payload
+            )
+        except XuiError as e:
+            logger.error(
+                "Failed to attach subId to client {}: {}", sub.xui_client_id, e
+            )
+            raise _xui_error("update_client", e)
+
+        await self.sub_repo.set_sub_id(sub.id, new_sub_id)
+        sub.sub_id = new_sub_id
+
+        url = settings.subscription_url(new_sub_id)
+        if not url:
+            # Should never happen — settings.subscription_url falls back to
+            # XUI_URL — but degrade gracefully if base URL is misconfigured.
+            raise UserFacingError(
+                "⚠️ Ключ обновлён, но базовый URL подписки не настроен. "
+                "Сообщите администратору.",
+                log_detail="subscription_url returned None after upgrade",
+            )
+
+        logger.info(
+            "Subscription upgraded to subId: user={} sub={} sub_id={}",
+            sub.user_id,
+            sub.id,
+            new_sub_id,
+        )
+        return url
+
     async def regenerate_key(self, sub: Subscription) -> Optional[str]:
         if not sub.xui_client_id or not sub.xui_inbound_id:
             raise UserFacingError(

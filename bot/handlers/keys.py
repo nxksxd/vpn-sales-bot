@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from aiogram import Bot, F, Router
 from aiogram.types import BufferedInputFile, CallbackQuery
+from loguru import logger
 
 from bot.config import settings
 from bot.database.models import Subscription
@@ -26,7 +27,10 @@ from bot.database.session import async_session_factory
 from bot.database.repositories.subscription import SubscriptionRepository
 from bot.keyboards.user_kb import back_to_menu_kb, subscription_kb
 from bot.services.qr_generator import generate_qr_buffer
+from bot.services.subscription import SubscriptionService, UserFacingError
+from bot.services.xui_client import XUIClient
 from bot.utils.formatters import code
+
 
 router = Router(name="keys")
 
@@ -94,7 +98,7 @@ async def cb_show_key(call: CallbackQuery) -> None:
                 "⚠️ Ключ ещё не сформирован. Попробуйте через минуту "
                 "или нажмите «Обновить ключ».",
                 parse_mode="HTML",
-                reply_markup=subscription_kb(has_active=True),
+                reply_markup=subscription_kb(has_active=True, is_legacy=True),
             )
         return
 
@@ -117,18 +121,19 @@ async def cb_show_key(call: CallbackQuery) -> None:
             + _legacy_hint()
         )
 
+    kb = subscription_kb(has_active=True, is_legacy=not is_subscription)
     if call.message:
         try:
             await call.message.edit_text(
                 text,
                 parse_mode="HTML",
-                reply_markup=subscription_kb(has_active=True),
+                reply_markup=kb,
             )
         except Exception:
             await call.message.answer(
                 text,
                 parse_mode="HTML",
-                reply_markup=subscription_kb(has_active=True),
+                reply_markup=kb,
             )
 
 
@@ -189,3 +194,78 @@ async def cb_show_qr(call: CallbackQuery, bot: Bot) -> None:
         caption=caption,
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data == "sub:upgrade_key")
+async def cb_upgrade_key(call: CallbackQuery) -> None:
+    """Migrate a legacy subscription (no ``sub_id``) to the modern format.
+
+    The handler is idempotent on the UI level: if the active subscription
+    already has a ``sub_id``, we just show the existing subscription URL
+    without bothering 3x-ui.
+    """
+    await call.answer("Обновляю ключ…")
+    user = call.from_user
+    if user is None:
+        return
+
+    async with async_session_factory() as session:
+        sub_repo = SubscriptionRepository(session)
+        active = await sub_repo.get_active_by_user(user.id)
+
+        if active is None:
+            if call.message:
+                await call.message.edit_text(
+                    _no_key_text(),
+                    parse_mode="HTML",
+                    reply_markup=back_to_menu_kb(),
+                )
+            return
+
+        xui = XUIClient()
+        try:
+            service = SubscriptionService(session, xui)
+            sub_url = await service.upgrade_to_subscription_link(active)
+        except UserFacingError as e:
+            if call.message:
+                await call.message.edit_text(
+                    e.user_message,
+                    parse_mode="HTML",
+                    reply_markup=subscription_kb(has_active=True, is_legacy=True),
+                )
+            return
+        except Exception as e:
+            logger.error("upgrade_to_subscription_link failed: {}", e)
+            if call.message:
+                await call.message.edit_text(
+                    "❌ Не удалось обновить ключ. Попробуйте позже или "
+                    "обратитесь в поддержку.",
+                    parse_mode="HTML",
+                    reply_markup=subscription_kb(has_active=True, is_legacy=True),
+                )
+            return
+        finally:
+            await xui.close()
+
+    text = (
+        "✅ <b>Ключ обновлён!</b>\n\n"
+        "Теперь у вас современная ссылка-подписка. Скопируйте её и "
+        "добавьте в приложение (V2RayTun, Hiddify, v2rayNG, Streisand и т.п.) "
+        "как <b>«Subscription»</b> / <b>«Подписка»</b>:\n\n"
+        f"{code(sub_url)}\n\n"
+        "📱 <i>Тапните по ссылке — она скопируется. "
+        "Конфиг будет обновляться автоматически.</i>"
+    )
+    if call.message:
+        try:
+            await call.message.edit_text(
+                text,
+                parse_mode="HTML",
+                reply_markup=subscription_kb(has_active=True),
+            )
+        except Exception:
+            await call.message.answer(
+                text,
+                parse_mode="HTML",
+                reply_markup=subscription_kb(has_active=True),
+            )

@@ -103,6 +103,15 @@ class SubscriptionRepository:
         )
         return result.scalars().all()
 
+    async def set_sub_id(self, sub_id: int, value: str) -> None:
+        """Persist the 3x-ui ``subId`` for an existing subscription row."""
+        await self.session.execute(
+            update(Subscription)
+            .where(Subscription.id == sub_id)
+            .values(sub_id=value)
+        )
+        await self.session.commit()
+
     async def set_status(self, sub_id: int, status: str) -> None:
         await self.session.execute(
             update(Subscription)
