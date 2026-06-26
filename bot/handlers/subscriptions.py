@@ -26,6 +26,18 @@ from bot.services.notification import NotificationService
 from bot.services.subscription import SubscriptionService
 from bot.services.subscription_use_cases import SubscriptionUseCases
 from bot.services.xui_client import XUIClient
+from bot.utils.formatters import (
+    code,
+    days_until,
+    fmt_date,
+    fmt_plan,
+    fmt_price,
+    fmt_rub,
+    fmt_status,
+    fmt_traffic_limit,
+    pluralize_days,
+)
+
 router = Router(name="subscriptions")
 
 

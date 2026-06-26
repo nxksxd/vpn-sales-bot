@@ -8,6 +8,8 @@ import string
 from typing import Optional, Sequence
 
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.models import User
@@ -29,6 +31,7 @@ class UserRepository:
         first_name: Optional[str] = None,
         language_code: str = "ru",
     ) -> User:
+        # Fast path: user already exists.
         result = await self.session.execute(
             select(User).where(User.telegram_id == telegram_id)
         )
@@ -42,17 +45,58 @@ class UserRepository:
             await self.session.commit()
             return user
 
-        user = User(
-            telegram_id=telegram_id,
-            username=username,
-            first_name=first_name,
-            language_code=language_code,
-            referral_code=_generate_referral_code(),
-            last_active=datetime.datetime.utcnow(),
+        # Race-safe insert: if a concurrent request already created the user,
+        # ON CONFLICT DO NOTHING avoids a UniqueViolationError that would
+        # otherwise abort the whole transaction.
+        now = datetime.datetime.utcnow()
+        stmt = (
+            pg_insert(User.__table__)
+            .values(
+                telegram_id=telegram_id,
+                username=username,
+                first_name=first_name,
+                language_code=language_code,
+                referral_code=_generate_referral_code(),
+                last_active=now,
+            )
+            .on_conflict_do_nothing(index_elements=[User.telegram_id])
         )
-        self.session.add(user)
+        try:
+            await self.session.execute(stmt)
+            await self.session.commit()
+        except IntegrityError:
+            # Extremely rare: e.g. conflict on referral_code. Roll back and
+            # fall through to re-fetch logic below.
+            await self.session.rollback()
+
+        # Re-fetch the user (either freshly inserted or created by a parallel
+        # request that won the race).
+        result = await self.session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            # As a last resort, retry the insert once (covers referral_code
+            # collision when the row genuinely did not exist).
+            user = User(
+                telegram_id=telegram_id,
+                username=username,
+                first_name=first_name,
+                language_code=language_code,
+                referral_code=_generate_referral_code(),
+                last_active=now,
+            )
+            self.session.add(user)
+            await self.session.commit()
+            await self.session.refresh(user)
+            return user
+
+        # Refresh activity/profile fields if another request created the row.
+        user.username = username
+        user.first_name = first_name
+        user.last_active = datetime.datetime.utcnow()
+        user.deleted_at = None
         await self.session.commit()
-        await self.session.refresh(user)
         return user
 
     async def get_by_telegram_id(
