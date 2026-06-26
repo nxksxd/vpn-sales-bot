@@ -5,7 +5,12 @@ from __future__ import annotations
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from loguru import logger
 
 from bot.config import settings
@@ -21,7 +26,7 @@ from bot.keyboards.user_kb import (
     renew_plan_kb,
     subscription_kb,
 )
-from bot.keyboards.product_kb import region_select_kb
+from bot.keyboards.product_kb import PRODUCTS, product_select_kb, region_select_kb
 from bot.services.notification import NotificationService
 from bot.services.subscription import SubscriptionService, UserFacingError
 from bot.services.subscription_use_cases import SubscriptionUseCases
@@ -47,40 +52,117 @@ class PurchaseStates(StatesGroup):
 
 @router.callback_query(F.data == "u:regions")
 async def cb_regions(call: CallbackQuery) -> None:
+    """Legacy alias — redirect to the new product selection screen."""
     await call.answer()
-    text = (
-        "🌍 <b>Выбор локации</b>\n\n"
-        "Выберите регион сервера. Если не уверены — используйте автоподбор."
-    )
     async with async_session_factory() as session:
         repo = ServerRegionRepository(session)
         region_rows = [
             {"code": region.code, "label": region.label}
             for region in await repo.get_active_regions()
         ]
-    if call.message:
-        await call.message.edit_text(text, parse_mode="HTML", reply_markup=region_select_kb(region_rows))
-
-
-@router.callback_query(F.data.startswith("region:"))
-async def cb_region_selected(call: CallbackQuery) -> None:
-    await call.answer("Локация выбрана")
-    region_code = call.data.split(":", 1)[1] if call.data else "default"
-    async with async_session_factory() as session:
-        xui = XUIClient()
-        uc = SubscriptionUseCases(session, xui)
-        region = await uc.resolve_region(region_code)
-    region_label = region.label if region is not None else settings.server_regions.get(region_code, {}).get("label", region_code)
     text = (
-        "🛒 <b>Выбор тарифа</b>\n\n"
-        f"🌍 Локация: <b>{region_label}</b>\n"
-        "При необходимости можно применить промокод перед покупкой."
+        "🌍 <b>Выбор локации</b>\n\n"
+        "Выберите регион сервера."
     )
     if call.message:
         await call.message.edit_text(
             text,
             parse_mode="HTML",
-            reply_markup=buy_plan_kb(region_code=region_code),
+            reply_markup=region_select_kb(region_rows, product_code="vless"),
+        )
+
+
+def _product_label(product_code: str) -> str:
+    for p in PRODUCTS:
+        if p["code"] == product_code:
+            return p["label"]
+    return product_code
+
+
+@router.callback_query(F.data.startswith("prod:"))
+async def cb_product_selected(call: CallbackQuery) -> None:
+    """Step 2 of purchase funnel — region picker for the chosen product.
+
+    Callback formats:
+      * ``prod:<product>`` — entered from product menu
+      * ``prod:<product>:<PROMO>`` — preserves applied promo code
+    """
+    await call.answer()
+    parts = (call.data or "").split(":")
+    product_code = parts[1] if len(parts) > 1 else "vless"
+    promo_code = parts[2] if len(parts) > 2 else None
+
+    async with async_session_factory() as session:
+        repo = ServerRegionRepository(session)
+        region_rows = [
+            {"code": region.code, "label": region.label}
+            for region in await repo.get_active_regions()
+        ]
+
+    if not region_rows:
+        text = (
+            f"🌍 <b>{_product_label(product_code)} — выбор региона</b>\n\n"
+            "❌ Сейчас нет доступных регионов. Попробуйте позже."
+        )
+        if call.message:
+            await call.message.edit_text(text, parse_mode="HTML", reply_markup=back_to_menu_kb())
+        return
+
+    promo_text = f"\n🎁 Применён промокод: <b>{promo_code}</b>" if promo_code else ""
+    text = (
+        f"🌍 <b>{_product_label(product_code)} — выбор региона</b>\n\n"
+        f"Выберите страну сервера:{promo_text}"
+    )
+    if call.message:
+        await call.message.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=region_select_kb(region_rows, product_code=product_code, promo_code=promo_code),
+        )
+
+
+@router.callback_query(F.data.startswith("region:"))
+async def cb_region_selected(call: CallbackQuery) -> None:
+    """Step 3 — duration picker.
+
+    Callback formats:
+      * ``region:<product>:<code>`` — new format
+      * ``region:<product>:<code>:<PROMO>``
+      * ``region:<code>`` — legacy (assume product=vless)
+    """
+    await call.answer("Локация выбрана")
+    parts = (call.data or "").split(":")
+    # New format: region:<product>:<code>[:<promo>]
+    if len(parts) >= 3:
+        product_code = parts[1]
+        region_code = parts[2]
+        promo_code = parts[3] if len(parts) > 3 else None
+    else:
+        product_code = "vless"
+        region_code = parts[1] if len(parts) > 1 else "default"
+        promo_code = None
+
+    async with async_session_factory() as session:
+        xui = XUIClient()
+        uc = SubscriptionUseCases(session, xui)
+        region = await uc.resolve_region(region_code)
+
+    region_label = region.label if region is not None else settings.server_regions.get(region_code, {}).get("label", region_code)
+    promo_line = f"\n🎁 Промокод: <b>{promo_code}</b>" if promo_code else ""
+    text = (
+        f"🛒 <b>{_product_label(product_code)} — выбор срока</b>\n\n"
+        f"🌍 Локация: <b>{region_label}</b>{promo_line}\n\n"
+        "Выберите, на сколько месяцев оформить подписку:"
+    )
+    if call.message:
+        await call.message.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=buy_plan_kb(
+                region_code=region_code,
+                promo_code=promo_code,
+                product_code=product_code,
+            ),
         )
 
 
@@ -111,16 +193,22 @@ async def msg_enter_promo(message: Message, state: FSMContext) -> None:
         )
         return
     discount = promo.discount_percent if promo is not None else settings.promo_codes[promo_code].get("discount_percent", 0)
-    async with async_session_factory() as session:
-        repo = ServerRegionRepository(session)
-        region_rows = [
-            {"code": region.code, "label": region.label}
-            for region in await repo.get_active_regions()
-        ]
+    # Send user back to the product picker, preserving the promo code in
+    # subsequent callbacks so it's automatically applied to checkout.
+    rows = []
+    for p in PRODUCTS:
+        rows.append(
+            [InlineKeyboardButton(
+                text=p["label"],
+                callback_data=f"prod:{p['code']}:{promo_code}",
+            )]
+        )
+    rows.append([InlineKeyboardButton(text="« Главное меню", callback_data="u:menu")])
     await message.answer(
-        f"✅ Промокод <b>{promo_code}</b> применён. Скидка: <b>{discount}%</b>\n\nВыберите локацию:",
+        f"✅ Промокод <b>{promo_code}</b> применён. Скидка: <b>{discount}%</b>\n\n"
+        "Выберите продукт:",
         parse_mode="HTML",
-        reply_markup=region_select_kb(region_rows),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
 
 
@@ -249,9 +337,12 @@ async def cb_buy_menu(call: CallbackQuery) -> None:
         text = (
             "🛒 <b>Купить подписку</b>\n\n"
             f"💰 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
-            "Сначала выберите локацию сервера. Также можно активировать trial или применить промокод."
+            "Выберите, что хотите приобрести. После выбора продукта вы "
+            "сможете указать регион и срок подписки."
         )
-        kb = region_select_kb()
+        # Step 1 of the funnel — product selection. From here the user
+        # picks a product (e.g. VLESS), then region, then plan duration.
+        kb = product_select_kb()
 
     if call.message:
         try:
@@ -266,11 +357,26 @@ async def cb_buy_menu(call: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("buy:"))
 async def cb_buy_plan(call: CallbackQuery) -> None:
+    """Step 4 — show purchase confirmation card.
+
+    Supports two callback layouts:
+
+    * ``buy:<product>:<plan>:<region>[:<promo>]`` — current format
+    * ``buy:<plan>:<region>[:<promo>]`` — legacy (assume product=vless)
+    """
     await call.answer()
     parts = (call.data or "").split(":")
-    plan_type = parts[1] if len(parts) > 1 else ""
-    region_code = parts[2] if len(parts) > 2 else None
-    promo_code = parts[3] if len(parts) > 3 else None
+    product_codes = {p["code"] for p in PRODUCTS}
+    if len(parts) >= 4 and parts[1] in product_codes:
+        product_code = parts[1]
+        plan_type = parts[2]
+        region_code = parts[3]
+        promo_code = parts[4] if len(parts) > 4 else None
+    else:
+        product_code = "vless"
+        plan_type = parts[1] if len(parts) > 1 else ""
+        region_code = parts[2] if len(parts) > 2 else None
+        promo_code = parts[3] if len(parts) > 3 else None
     plan = settings.price_with_promo(plan_type, promo_code)
     if not plan:
         return
@@ -290,6 +396,7 @@ async def cb_buy_plan(call: CallbackQuery) -> None:
     region_label = region.label if region is not None else settings.server_regions.get(region_code or "default", {}).get("label", "Автовыбор")
     text = (
         f"🛒 <b>Подтверждение покупки</b>\n\n"
+        f"🛍 Продукт: <b>{_product_label(product_code)}</b>\n"
         f"📋 Тариф: <b>{plan['label']}</b>\n"
         f"🌍 Локация: <b>{region_label}</b>\n"
         f"💰 Стоимость: <b>{fmt_price(plan_rub, plan['stars'])}</b>\n"
@@ -317,23 +424,50 @@ async def cb_buy_plan(call: CallbackQuery) -> None:
             await call.message.edit_text(
                 text,
                 parse_mode="HTML",
-                reply_markup=confirm_purchase_kb(plan_type, region_code=region_code, promo_code=promo_code),
+                reply_markup=confirm_purchase_kb(
+                    plan_type,
+                    region_code=region_code,
+                    promo_code=promo_code,
+                    product_code=product_code,
+                ),
             )
         except Exception:
             await call.message.answer(
                 text,
                 parse_mode="HTML",
-                reply_markup=confirm_purchase_kb(plan_type, region_code=region_code, promo_code=promo_code),
+                reply_markup=confirm_purchase_kb(
+                    plan_type,
+                    region_code=region_code,
+                    promo_code=promo_code,
+                    product_code=product_code,
+                ),
             )
 
 
 @router.callback_query(F.data.startswith("confirm_buy:"))
 async def cb_confirm_buy(call: CallbackQuery, bot: Bot) -> None:
+    """Final step — debit balance and provision the product.
+
+    Supports two callback layouts:
+
+    * ``confirm_buy:<product>:<plan>:<region>[:<promo>]`` — current format
+    * ``confirm_buy:<plan>:<region>[:<promo>]`` — legacy (assume product=vless)
+    """
     await call.answer()
     parts = (call.data or "").split(":")
-    plan_type = parts[1] if len(parts) > 1 else ""
-    region_code = parts[2] if len(parts) > 2 else "default"
-    promo_code = parts[3] if len(parts) > 3 else None
+    product_codes = {p["code"] for p in PRODUCTS}
+    if len(parts) >= 4 and parts[1] in product_codes:
+        product_code = parts[1]
+        plan_type = parts[2]
+        region_code = parts[3]
+        promo_code = parts[4] if len(parts) > 4 else None
+    else:
+        product_code = "vless"
+        plan_type = parts[1] if len(parts) > 1 else ""
+        region_code = parts[2] if len(parts) > 2 else "default"
+        promo_code = parts[3] if len(parts) > 3 else None
+    # ``product_code`` reserved for future products (Outline, dedicated IP, ...).
+    _ = product_code
 
     async with async_session_factory() as session:
         xui = XUIClient()

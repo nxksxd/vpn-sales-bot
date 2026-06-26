@@ -72,7 +72,12 @@ def back_to_menu_kb() -> InlineKeyboardMarkup:
     )
 
 
-def buy_plan_kb(region_code: str | None = None, promo_code: str | None = None) -> InlineKeyboardMarkup:
+def buy_plan_kb(
+    region_code: str | None = None,
+    promo_code: str | None = None,
+    product_code: str = "vless",
+) -> InlineKeyboardMarkup:
+    """Third step — pick a duration (plan) for the chosen product+region."""
     plans = settings.plans
     rows = []
     for key in plans:
@@ -80,9 +85,8 @@ def buy_plan_kb(region_code: str | None = None, promo_code: str | None = None) -
         discount_text = f" (-{plan['discount']}%)" if plan['discount'] > 0 else ""
         promo_text = " +promo" if plan.get("promo_code") else ""
         text = f"{plan['label']} — {plan['rub']} ₽ ({plan['stars']} ⭐){discount_text}{promo_text}"
-        callback_parts = ["buy", key]
-        if region_code:
-            callback_parts.append(region_code)
+        # callback format: buy:<product>:<plan>:<region>[:<promo>]
+        callback_parts = ["buy", product_code, key, region_code or "default"]
         if promo_code:
             callback_parts.append(promo_code.upper())
         rows.append(
@@ -91,19 +95,27 @@ def buy_plan_kb(region_code: str | None = None, promo_code: str | None = None) -
     rows.append(
         [InlineKeyboardButton(text="🎁 Промокод", callback_data="u:promo")]
     )
+    # Back button leads to region selection for the same product.
+    back_cb = f"prod:{product_code}"
+    if promo_code:
+        back_cb += f":{promo_code.upper()}"
     rows.append(
-        [InlineKeyboardButton(text="🌍 Выбор локации", callback_data="u:regions")]
+        [InlineKeyboardButton(text="« Назад к региону", callback_data=back_cb)]
     )
     rows.append(
-        [InlineKeyboardButton(text="« Назад", callback_data="u:menu")]
+        [InlineKeyboardButton(text="« Главное меню", callback_data="u:menu")]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def confirm_purchase_kb(plan_type: str, region_code: str | None = None, promo_code: str | None = None) -> InlineKeyboardMarkup:
-    callback_parts = ["confirm_buy", plan_type]
-    if region_code:
-        callback_parts.append(region_code)
+def confirm_purchase_kb(
+    plan_type: str,
+    region_code: str | None = None,
+    promo_code: str | None = None,
+    product_code: str = "vless",
+) -> InlineKeyboardMarkup:
+    # callback format: confirm_buy:<product>:<plan>:<region>[:<promo>]
+    callback_parts = ["confirm_buy", product_code, plan_type, region_code or "default"]
     if promo_code:
         callback_parts.append(promo_code.upper())
     callback_data = ":".join(callback_parts)

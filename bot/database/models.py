@@ -179,6 +179,9 @@ class PromoCode(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     usage_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     used_count: Mapped[int] = mapped_column(Integer, default=0)
+    valid_until: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

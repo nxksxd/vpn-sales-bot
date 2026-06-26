@@ -141,7 +141,7 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
     if user is None:
         return
 
-    from bot.keyboards.product_kb import region_select_kb
+    from bot.keyboards.product_kb import product_select_kb, region_select_kb  # noqa: F401
     from bot.database.repositories.subscription import SubscriptionRepository
     from bot.keyboards.user_kb import (
         back_to_menu_kb,
@@ -226,10 +226,11 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
                 )
             else:
                 await message.answer(
-                    "🛒 <b>Выберите план подписки:</b>\n\n"
-                    "Сначала можно выбрать локацию сервера или сразу запустить trial.",
+                    "🛒 <b>Купить подписку</b>\n\n"
+                    "Выберите, что хотите приобрести. После выбора продукта вы "
+                    "сможете указать регион и срок подписки.",
                     parse_mode="HTML",
-                    reply_markup=region_select_kb(),
+                    reply_markup=product_select_kb(),
                 )
 
         elif callback_data == "u:topup":
