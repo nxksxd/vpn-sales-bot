@@ -314,35 +314,26 @@ async def cb_subscriptions(call: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "u:buy")
 async def cb_buy_menu(call: CallbackQuery) -> None:
+    """Step 1 of the purchase funnel — product selection.
+
+    The funnel is intentionally the same regardless of whether the user
+    already has an active subscription: Product → Region → Plan duration.
+    Renewals of an existing subscription live under «Мои подписки» →
+    «Продлить» (``sub:renew``), not here.
+    """
     await call.answer()
     async with async_session_factory() as session:
         user_repo = UserRepository(session)
-        sub_repo = SubscriptionRepository(session)
         db_user = await user_repo.get_by_telegram_id(call.from_user.id)
-        active = await sub_repo.get_active_by_user(call.from_user.id)
 
     balance = db_user.balance if db_user else 0
-
-    if active:
-        remaining = days_until(active.expires_at)
-        text = (
-            "\U0001f504 <b>Продление подписки</b>\n\n"
-            f"У вас уже есть активная подписка (<b>{fmt_plan(active.plan_type)}</b>, "
-            f"осталось <b>{pluralize_days(remaining)}</b>).\n\n"
-            f"\U0001f4b0 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
-            "Выберите период продления:"
-        )
-        kb = renew_plan_kb()
-    else:
-        text = (
-            "🛒 <b>Купить подписку</b>\n\n"
-            f"💰 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
-            "Выберите, что хотите приобрести. После выбора продукта вы "
-            "сможете указать регион и срок подписки."
-        )
-        # Step 1 of the funnel — product selection. From here the user
-        # picks a product (e.g. VLESS), then region, then plan duration.
-        kb = product_select_kb()
+    text = (
+        "🛒 <b>Купить подписку</b>\n\n"
+        f"💰 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
+        "Выберите, что хотите приобрести. После выбора продукта вы "
+        "сможете указать регион и срок подписки."
+    )
+    kb = product_select_kb()
 
     if call.message:
         try:

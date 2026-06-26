@@ -212,26 +212,22 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
                 )
 
         elif callback_data == "u:buy":
-            sub_repo = SubscriptionRepository(session)
-            active = await sub_repo.get_active_by_user(user.id)
-            if active:
-                remaining = days_until(active.expires_at)
-                await message.answer(
-                    "\U0001f504 <b>Продление подписки</b>\n\n"
-                    f"У вас уже есть активная подписка (<b>{fmt_plan(active.plan_type)}</b>, "
-                    f"осталось <b>{pluralize_days(remaining)}</b>).\n\n"
-                    "Выберите период продления:",
-                    parse_mode="HTML",
-                    reply_markup=renew_plan_kb(),
-                )
-            else:
-                await message.answer(
-                    "🛒 <b>Купить подписку</b>\n\n"
-                    "Выберите, что хотите приобрести. После выбора продукта вы "
-                    "сможете указать регион и срок подписки.",
-                    parse_mode="HTML",
-                    reply_markup=product_select_kb(),
-                )
+            # Воронка покупки одинакова для всех пользователей вне
+            # зависимости от наличия активной подписки:
+            #   Продукт → Регион → Срок → Подтверждение.
+            # Это позволит в будущем продавать не только VLESS-подписку,
+            # но и другие продукты. Продление существующей подписки
+            # доступно отдельно через «Мои подписки» → «Продлить».
+            db_user = await user_repo.get_by_telegram_id(user.id)
+            balance = db_user.balance if db_user else 0
+            await message.answer(
+                "🛒 <b>Купить подписку</b>\n\n"
+                f"💰 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
+                "Выберите, что хотите приобрести. После выбора продукта вы "
+                "сможете указать регион и срок подписки.",
+                parse_mode="HTML",
+                reply_markup=product_select_kb(),
+            )
 
         elif callback_data == "u:topup":
             await message.answer(
