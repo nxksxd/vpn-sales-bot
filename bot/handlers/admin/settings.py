@@ -16,7 +16,6 @@ from bot.config import settings, BASE_DIR
 from bot.keyboards.admin_kb import admin_main_kb, admin_xui_settings_kb
 from bot.middlewares.admin_check import admin_only, is_admin
 from bot.database.repositories.server_region import ServerRegionRepository
-from bot.database.repositories.promo_code import PromoCodeRepository
 from bot.domain_enums import AuditAction
 from bot.services.audit_log import AuditLogService
 from bot.services.xui_client import XUIClient
@@ -255,28 +254,6 @@ async def cb_regions_settings(call: CallbackQuery) -> None:
         for region in regions:
             lines.append(
                 f"• {code(region.code)} | {region.label} | {region.server_address} | inbound={region.inbound_id}"
-            )
-        text = "\n".join(lines)
-
-    if call.message:
-        await _safe_edit_text(call.message, text, parse_mode="HTML", reply_markup=admin_xui_settings_kb())
-
-
-@router.callback_query(F.data == "adm:promos")
-@admin_only
-async def cb_promos_settings(call: CallbackQuery) -> None:
-    await call.answer()
-    async with __import__("bot.database.session", fromlist=["async_session_factory"]).async_session_factory() as session:
-        repo = PromoCodeRepository(session)
-        promos = await repo.get_all_active()
-
-    if not promos:
-        text = "🎁 <b>Промокоды</b>\n\nАктивных промокодов пока нет."
-    else:
-        lines = ["🎁 <b>Промокоды</b>\n"]
-        for promo in promos:
-            lines.append(
-                f"• {code(promo.code)} | скидка={promo.discount_percent}% | used={promo.used_count} | limit={promo.usage_limit or '∞'}"
             )
         text = "\n".join(lines)
 
