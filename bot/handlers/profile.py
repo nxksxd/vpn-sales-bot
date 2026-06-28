@@ -38,6 +38,8 @@ async def cb_profile(call: CallbackQuery) -> None:
         repo = UserRepository(session)
         referral_count = await repo.get_referral_count(user.id)
 
+    bot_info = await call.bot.get_me()
+    bot_username = bot_info.username or ""
     auto_renew_status = "\u2705 ВКЛ" if db_user.auto_renew else "\u274c ВЫКЛ"
     text = (
         "\U0001f48e <b>Мой профиль</b>\n\n"
@@ -48,7 +50,7 @@ async def cb_profile(call: CallbackQuery) -> None:
         f"\U0001f4c5 Дата регистрации: {fmt_date(db_user.created_at)}\n"
         f"\U0001f465 Рефералов: {referral_count}\n\n"
         f"\U0001f517 Реферальная ссылка:\n"
-        f"{code(f'https://t.me/{(call.bot.token or '').split(':')[0] if call.bot else ''}?start=ref_{db_user.referral_code}')}"
+        f"{code(f'https://t.me/{bot_username}?start=ref_{db_user.referral_code}')}"
     )
 
     if call.message:

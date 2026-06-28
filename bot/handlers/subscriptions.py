@@ -304,12 +304,12 @@ async def cb_subscriptions(call: CallbackQuery) -> None:
             f"🎁 Trial: <b>{'недоступен' if getattr(user, 'trial_used', False) else 'доступен'}</b>"
         )
         kb = subscription_kb(has_active=False)
-        if call.message:
-            try:
-                await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
-        return
+
+    if call.message:
+        try:
+            await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await call.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "u:buy")

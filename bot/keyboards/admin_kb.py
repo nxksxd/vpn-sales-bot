@@ -11,6 +11,7 @@ def admin_main_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="👥 Пользователи", callback_data="adm:users")],
             [InlineKeyboardButton(text="📊 Статистика", callback_data="adm:stats")],
             [InlineKeyboardButton(text="📢 Рассылка", callback_data="adm:broadcast")],
+            [InlineKeyboardButton(text="🎁 Промокоды", callback_data="adm:promos")],
             [InlineKeyboardButton(text="🧾 Audit log", callback_data="adm:audit")],
             [InlineKeyboardButton(text="⚙️ Настройки", callback_data="adm:settings")],
             [InlineKeyboardButton(text="🖥 Статус сервера", callback_data="adm:server")],

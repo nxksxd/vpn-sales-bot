@@ -310,13 +310,13 @@ async def _verify_client_on_panel(
     a new UUID / breaking their imported configuration.
     """
     if not sub.xui_client_id or not sub.xui_inbound_id:
-        return False, "❌ Ключ не привязан к VPN-серверу."
+        return False, "❌ Ключ не привязан к серверу."
 
     try:
         inbound_raw = await xui.get_inbound(sub.xui_inbound_id)
     except XuiError as e:
         logger.warning("verify_client: get_inbound failed: {}", e)
-        return False, "⚠️ Не удалось связаться с VPN-сервером. Попробуйте позже."
+        return False, "⚠️ Не удалось связаться с сервером. Попробуйте позже."
 
     if not inbound_raw:
         return False, "❌ Не найден входящий профиль на сервере."

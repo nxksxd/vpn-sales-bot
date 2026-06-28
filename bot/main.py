@@ -37,6 +37,8 @@ from bot.handlers.admin import stats as h_admin_stats
 from bot.handlers.admin import broadcast as h_admin_broadcast
 from bot.handlers.admin import settings as h_admin_settings
 from bot.handlers.admin import audit as h_admin_audit
+from bot.handlers.admin import catalog as h_admin_catalog
+from bot.handlers.admin import promo as h_admin_promo
 
 from bot.scheduler.tasks import setup_scheduler
 from bot.services.xui_client import XUIClient
@@ -84,6 +86,8 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(h_admin_broadcast.router)
     dp.include_router(h_admin_settings.router)
     dp.include_router(h_admin_audit.router)
+    dp.include_router(h_admin_catalog.router)
+    dp.include_router(h_admin_promo.router)
 
     return dp
 
