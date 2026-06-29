@@ -8,7 +8,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from loguru import logger
 
-from bot.config import settings
 from bot.keyboards.user_kb import back_to_menu_kb, topup_kb
 from bot.utils.validators import validate_topup_amount
 
@@ -23,14 +22,9 @@ def _payment_method_kb() -> InlineKeyboardMarkup:
     """Keyboard for choosing payment method."""
     rows = [
         [InlineKeyboardButton(text="⭐ Оплата звёздами", callback_data="topup:stars")],
+        [InlineKeyboardButton(text="💳 Оплата через ЮKassa", callback_data="topup:yookassa")],
+        [InlineKeyboardButton(text="« Главное меню", callback_data="u:menu")],
     ]
-    if settings.yookassa_shop_id and settings.yookassa_secret_key:
-        rows.append(
-            [InlineKeyboardButton(text="💳 Оплата через ЮKassa", callback_data="topup:yookassa")]
-        )
-    rows.append(
-        [InlineKeyboardButton(text="« Главное меню", callback_data="u:menu")]
-    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
