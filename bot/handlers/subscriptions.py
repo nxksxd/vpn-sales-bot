@@ -271,7 +271,10 @@ async def cb_start_trial(call: CallbackQuery, bot: Bot) -> None:
 
     if call.message:
         await call.message.edit_text(
-            f"✅ <b>Trial активирован</b> на {settings.trial_days} дн.\n\nПерейдите в «Мои подписки» или «Мой ключ».",
+            (
+                f"✅ <b>Trial активирован</b> на {settings.trial_days} дн.\n\n"
+                "Перейдите в «Мои подписки», чтобы посмотреть ключ."
+            ),
             parse_mode="HTML",
             reply_markup=subscription_kb(has_active=True),
         )

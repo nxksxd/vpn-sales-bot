@@ -40,10 +40,10 @@ MENU_BUTTONS_MAP = {
 def persistent_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=MENU_BTN_PROFILE), KeyboardButton(text=MENU_BTN_KEY)],
-            [KeyboardButton(text=MENU_BTN_BUY), KeyboardButton(text=MENU_BTN_TOPUP)],
-            [KeyboardButton(text=MENU_BTN_SUBS), KeyboardButton(text=MENU_BTN_GUIDE)],
-            [KeyboardButton(text=MENU_BTN_REF), KeyboardButton(text=MENU_BTN_SETTINGS)],
+            [KeyboardButton(text=MENU_BTN_PROFILE), KeyboardButton(text=MENU_BTN_BUY)],
+            [KeyboardButton(text=MENU_BTN_SUBS), KeyboardButton(text=MENU_BTN_REF)],
+            [KeyboardButton(text=MENU_BTN_TOPUP), KeyboardButton(text=MENU_BTN_GUIDE)],
+            [KeyboardButton(text=MENU_BTN_SETTINGS), KeyboardButton(text=MENU_BTN_SUPPORT)],
         ],
         resize_keyboard=True,
         is_persistent=True,
