@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Message
 from bot.config import settings
 from bot.database.session import async_session_factory
 from bot.database.repositories.user import UserRepository
+from bot.handlers.balance import _payment_method_kb
 from bot.keyboards.user_kb import (
     MENU_BUTTONS_MAP,
     persistent_menu_kb,
@@ -149,7 +150,6 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
         guide_kb,
         renew_plan_kb,
         subscription_kb,
-        topup_kb,
     )
     from bot.services.referral import ReferralService
     from bot.keyboards.user_kb import user_settings_kb
@@ -232,9 +232,9 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
         elif callback_data == "u:topup":
             await message.answer(
                 "\U0001f4b0 <b>Пополнение баланса</b>\n\n"
-                "Выберите сумму пополнения в Telegram Stars:",
+                "Выберите способ оплаты:",
                 parse_mode="HTML",
-                reply_markup=topup_kb(),
+                reply_markup=_payment_method_kb(),
             )
 
         elif callback_data == "sub:show_key":
