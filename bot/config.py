@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     # Empty = fields stored in plaintext (dev only; not for production).
     encryption_key: str = ""
 
+    # YooKassa
+    yookassa_shop_id: str = ""
+    yookassa_secret_key: str = ""
+    yookassa_return_url: str = "https://t.me/portalkey_bot"
+    yookassa_webhook_port: int = 8080
+
     # Observability
     sentry_dsn: str = ""  # empty = Sentry disabled
 

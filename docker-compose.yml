@@ -25,6 +25,8 @@ services:
     restart: always
     env_file:
       - .env
+    ports:
+      - "${YOOKASSA_WEBHOOK_PORT:-8080}:${YOOKASSA_WEBHOOK_PORT:-8080}"
     depends_on:
       postgres:
         condition: service_healthy

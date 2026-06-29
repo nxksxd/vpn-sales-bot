@@ -11,6 +11,7 @@ asyncpg>=0.29
 cryptography>=42.0
 python-dotenv>=1.0
 loguru>=0.7
+yookassa>=3.0
 sentry-sdk>=2.0
 pytest>=8.0
 pytest-asyncio>=0.23
