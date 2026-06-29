@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -18,28 +17,27 @@ from loguru import logger
 
 from bot.config import settings
 from bot.database.session import close_db, init_db
-from bot.middlewares.auth import BanCheckMiddleware
-from bot.middlewares.throttling import ThrottlingMiddleware
-
-from bot.handlers import start as h_start
-from bot.handlers import profile as h_profile
 from bot.handlers import balance as h_balance
-from bot.handlers import payments as h_payments
-from bot.handlers import subscriptions as h_subscriptions
 from bot.handlers import keys as h_keys
+from bot.handlers import payments as h_payments
+from bot.handlers import profile as h_profile
 from bot.handlers import referral as h_referral
+from bot.handlers import start as h_start
+from bot.handlers import subscriptions as h_subscriptions
 from bot.handlers import support as h_support
 from bot.handlers import user_settings as h_user_settings
-from bot.handlers.admin import main as h_admin_main
-from bot.handlers.admin import users as h_admin_users
-from bot.handlers.admin import keys as h_admin_keys
-from bot.handlers.admin import stats as h_admin_stats
-from bot.handlers.admin import broadcast as h_admin_broadcast
-from bot.handlers.admin import settings as h_admin_settings
+from bot.handlers import yookassa_payment as h_yookassa_payment
 from bot.handlers.admin import audit as h_admin_audit
+from bot.handlers.admin import broadcast as h_admin_broadcast
 from bot.handlers.admin import catalog as h_admin_catalog
+from bot.handlers.admin import keys as h_admin_keys
+from bot.handlers.admin import main as h_admin_main
 from bot.handlers.admin import promo as h_admin_promo
-
+from bot.handlers.admin import settings as h_admin_settings
+from bot.handlers.admin import stats as h_admin_stats
+from bot.handlers.admin import users as h_admin_users
+from bot.middlewares.auth import BanCheckMiddleware
+from bot.middlewares.throttling import ThrottlingMiddleware
 from bot.scheduler.tasks import setup_scheduler
 from bot.services.xui_client import XUIClient
 from bot.utils.observability import ensure_directory, init_sentry, log_event
@@ -88,6 +86,7 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(h_admin_audit.router)
     dp.include_router(h_admin_catalog.router)
     dp.include_router(h_admin_promo.router)
+    dp.include_router(h_yookassa_payment.router)
 
     return dp
 
@@ -120,6 +119,14 @@ async def on_startup(bot: Bot) -> None:
     sched = setup_scheduler(bot)
     sched.start()
 
+    # Start YooKassa webhook server if configured
+    from bot.services.yookassa_webhook import start_webhook_server
+
+    runner = await start_webhook_server()
+    if runner:
+        # Store runner reference for cleanup on shutdown
+        bot.__dict__["_yookassa_runner"] = runner
+
     admin_id = settings.admin_telegram_id
     if admin_id:
         try:
@@ -137,6 +144,13 @@ async def on_shutdown(bot: Bot) -> None:
     from bot.scheduler.tasks import scheduler
 
     scheduler.shutdown(wait=False)
+
+    # Stop YooKassa webhook server
+    runner = bot.__dict__.get("_yookassa_runner")
+    if runner:
+        await runner.cleanup()
+        logger.info("YooKassa webhook server stopped")
+
     await close_db()
     logger.info("Bot stopped.")
 
