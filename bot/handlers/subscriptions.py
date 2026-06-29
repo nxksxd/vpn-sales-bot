@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -590,7 +592,7 @@ async def cb_renew_plan(call: CallbackQuery, bot: Bot) -> None:
             sub = await sub_service.renew(
                 call.from_user.id,
                 plan_type,
-                idempotency_key=f"manual-renew:{call.from_user.id}:{plan_type}",
+                idempotency_key=f"manual-renew:{call.from_user.id}:{plan_type}:{uuid.uuid4().hex[:8]}",
             )
         except UserFacingError as e:
             if call.message:
