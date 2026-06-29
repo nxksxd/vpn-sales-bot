@@ -22,32 +22,30 @@ def _make_db():
 
 @pytest.mark.asyncio
 async def test_payment_method_selection_keyboard():
-    """Test that payment method keyboard shows YooKassa when configured."""
-    with patch("bot.handlers.balance.settings") as mock_settings:
-        mock_settings.yookassa_shop_id = "123456"
-        mock_settings.yookassa_secret_key = "test_key"
+    """Test that payment method keyboard always shows both options."""
+    from bot.handlers.balance import _payment_method_kb
 
-        from bot.handlers.balance import _payment_method_kb
-
-        kb = _payment_method_kb()
-        buttons = [btn.text for row in kb.inline_keyboard for btn in row]
-        assert "⭐ Оплата звёздами" in buttons
-        assert "💳 Оплата через ЮKassa" in buttons
+    kb = _payment_method_kb()
+    buttons = [btn.text for row in kb.inline_keyboard for btn in row]
+    assert "⭐ Оплата звёздами" in buttons
+    assert "💳 Оплата через ЮKassa" in buttons
 
 
 @pytest.mark.asyncio
-async def test_payment_method_selection_no_yookassa():
-    """Test that YooKassa button is hidden when not configured."""
-    with patch("bot.handlers.balance.settings") as mock_settings:
+async def test_yookassa_unavailable_shows_error():
+    """Test that clicking YooKassa when not configured shows error."""
+    from bot.handlers.yookassa_payment import _yookassa_available
+
+    with patch(
+        "bot.handlers.yookassa_payment.settings"
+    ) as mock_settings:
         mock_settings.yookassa_shop_id = ""
         mock_settings.yookassa_secret_key = ""
+        assert _yookassa_available() is False
 
-        from bot.handlers.balance import _payment_method_kb
-
-        kb = _payment_method_kb()
-        buttons = [btn.text for row in kb.inline_keyboard for btn in row]
-        assert "⭐ Оплата звёздами" in buttons
-        assert "💳 Оплата через ЮKassa" not in buttons
+        mock_settings.yookassa_shop_id = "123456"
+        mock_settings.yookassa_secret_key = "test_key"
+        assert _yookassa_available() is True
 
 
 @pytest.mark.asyncio
