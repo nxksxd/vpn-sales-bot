@@ -216,22 +216,10 @@ async def cb_upgrade_key(call: CallbackQuery) -> None:
         return
 
     async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(user.id)
-
-        if active is None:
-            if call.message:
-                await call.message.edit_text(
-                    _no_key_text(),
-                    parse_mode="HTML",
-                    reply_markup=back_to_menu_kb(),
-                )
-            return
-
         xui = XUIClient()
         try:
             service = SubscriptionService(session, xui)
-            sub_url = await service.upgrade_to_subscription_link(active)
+            sub_url = await service.upgrade_active_subscription_link(user.id)
         except UserFacingError as e:
             if call.message:
                 await call.message.edit_text(

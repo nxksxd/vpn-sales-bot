@@ -626,6 +626,16 @@ class SubscriptionService:
                 )
                 raise _xui_error("update_client", e)
 
+    async def upgrade_active_subscription_link(self, telegram_id: int) -> str:
+        active = await self.sub_repo.get_active_by_user(telegram_id)
+        if active is None:
+            raise UserFacingError(
+                "🔑 <b>У вас пока нет активного ключа</b>\n\n"
+                "Оформите подписку, и ключ появится в этом меню.",
+                log_detail="active subscription not found for key upgrade",
+            )
+        return await self.upgrade_to_subscription_link(active)
+
     async def upgrade_to_subscription_link(self, sub: Subscription) -> str:
         """Assign a ``subId`` to a legacy subscription and return its public URL.
 
