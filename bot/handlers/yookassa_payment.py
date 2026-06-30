@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
+import time
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -15,6 +15,7 @@ from bot.config import settings
 from bot.keyboards.user_kb import back_to_menu_kb
 
 router = Router(name="yookassa_payment")
+YOOKASSA_IDEMPOTENCY_WINDOW_SECONDS = 5 * 60
 
 
 class YooKassaTopupStates(StatesGroup):
@@ -176,7 +177,8 @@ async def _do_create_payment(telegram_id: int, amount_rub: int) -> tuple[str, st
     Configuration.account_id = settings.yookassa_shop_id
     Configuration.secret_key = settings.yookassa_secret_key
 
-    idempotency_key = str(uuid.uuid4())
+    idempotency_bucket = int(time.time() // YOOKASSA_IDEMPOTENCY_WINDOW_SECONDS)
+    idempotency_key = f"yookassa-topup:{telegram_id}:{amount_rub}:{idempotency_bucket}"
 
     try:
         payment = await asyncio.to_thread(
@@ -210,6 +212,9 @@ async def _do_create_payment(telegram_id: int, amount_rub: int) -> tuple[str, st
 
     confirmation_url = payment.confirmation.confirmation_url
     payment_id = payment.id
+    if not payment_id:
+        logger.error("YooKassa payment has no id")
+        return None
 
     # Save pending payment event
     from bot.database.repositories.payment_event import PaymentEventRepository
@@ -218,14 +223,16 @@ async def _do_create_payment(telegram_id: int, amount_rub: int) -> tuple[str, st
 
     async with async_session_factory() as session:
         repo = PaymentEventRepository(session)
-        await repo.create(
-            user_id=telegram_id,
-            status=PaymentStatus.PENDING,
-            amount_stars=0,
-            amount_rub=amount_rub,
-            charge_id=payment_id,
-            payload=f"yookassa:topup:{amount_rub}",
-        )
+        existing_event = await repo.get_by_charge_id(payment_id)
+        if existing_event is None:
+            await repo.create(
+                user_id=telegram_id,
+                status=PaymentStatus.PENDING,
+                amount_stars=0,
+                amount_rub=amount_rub,
+                charge_id=payment_id,
+                payload=f"yookassa:topup:{amount_rub}",
+            )
 
     logger.info(
         "YooKassa payment created: user={} amount={} payment_id={}",

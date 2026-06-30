@@ -2,10 +2,12 @@
 
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from bot.database.models import Base, User
@@ -47,6 +49,69 @@ async def test_yookassa_unavailable_shows_error():
         mock_settings.yookassa_shop_id = "123456"
         mock_settings.yookassa_secret_key = "test_key"
         assert _yookassa_available() is True
+
+
+@pytest.mark.asyncio
+async def test_yookassa_payment_creation_reuses_idempotency_key(monkeypatch):
+    """Fast repeated clicks should reuse YooKassa idempotency key/window."""
+    engine, session_factory = _make_db()
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with session_factory() as session:
+        await session.execute(
+            Base.metadata.tables["users"].insert().values(
+                telegram_id=777,
+                username="yk_idempotent",
+                first_name="Yk",
+                language_code="ru",
+                balance=0,
+                is_banned=False,
+                is_admin=False,
+                auto_renew=True,
+                onboarding_completed=False,
+                trial_used=False,
+                referral_code="YKIDEMP1",
+            )
+        )
+        await session.commit()
+
+    from bot.handlers import yookassa_payment
+
+    keys: list[str] = []
+
+    async def fake_to_thread(func, *args, **kwargs):
+        keys.append(kwargs["idempotency_key"])
+        return SimpleNamespace(
+            id="same-yookassa-payment",
+            confirmation=SimpleNamespace(confirmation_url="https://pay.example.test/invoice"),
+        )
+
+    monkeypatch.setattr(yookassa_payment.time, "time", lambda: 1_700_000_000)
+    monkeypatch.setattr(yookassa_payment.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr("bot.database.session.async_session_factory", session_factory)
+
+    first = await yookassa_payment._do_create_payment(777, 500)
+    second = await yookassa_payment._do_create_payment(777, 500)
+
+    assert first == ("https://pay.example.test/invoice", "same-yookassa-payment")
+    assert second == first
+    assert len(keys) == 2
+    assert keys[0] == keys[1]
+
+    payment_events = Base.metadata.tables["payment_events"]
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                select(payment_events).where(
+                    payment_events.c.charge_id == "same-yookassa-payment"
+                )
+            )
+        ).all()
+        assert len(rows) == 1
+
+    await engine.dispose()
 
 
 def test_webhook_ignores_x_forwarded_for_by_default(monkeypatch):
