@@ -9,7 +9,6 @@ from aiogram.types import CallbackQuery, Message
 
 from bot.config import settings
 from bot.database.session import async_session_factory
-from bot.database.repositories.user import UserRepository
 from bot.keyboards.user_kb import (
     MENU_BUTTONS_MAP,
     payment_method_kb,
@@ -18,6 +17,7 @@ from bot.keyboards.user_kb import (
 from bot.keyboards.admin_kb import admin_main_kb
 from bot.middlewares.admin_check import is_admin
 from bot.services.notification import NotificationService
+from bot.services.payment import PaymentService
 from bot.services.profile import UserProfileService
 from bot.services.start import StartService
 from bot.services.user_settings import UserSettingsService
@@ -141,8 +141,6 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
     from bot.utils.formatters import code, days_until, esc, fmt_date, fmt_rub
 
     async with async_session_factory() as session:
-        user_repo = UserRepository(session)
-
         if callback_data == "u:profile":
             profile = await UserProfileService(session).get_profile(user.id)
             if profile is None:
@@ -202,8 +200,7 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
             # Это позволит в будущем продавать не только VLESS-подписку,
             # но и другие продукты. Продление существующей подписки
             # доступно отдельно через «Мои подписки» → «Продлить».
-            db_user = await user_repo.get_by_telegram_id(user.id)
-            balance = db_user.balance if db_user else 0
+            balance = await PaymentService(session).get_user_balance_or_default(user.id, 0)
             await message.answer(
                 "🛒 <b>Купить подписку</b>\n\n"
                 f"💰 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
