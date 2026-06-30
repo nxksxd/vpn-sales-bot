@@ -4,9 +4,9 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from bot.database.session import async_session_factory
-from bot.database.repositories.audit_log import AuditLogRepository
 from bot.keyboards.admin_kb import admin_main_kb
 from bot.middlewares.admin_check import admin_only
+from bot.services.audit_log import AuditLogService
 from bot.utils.formatters import code, fmt_date
 
 router = Router(name="admin_audit")
@@ -22,11 +22,8 @@ async def cb_audit_logs(call: CallbackQuery) -> None:
         page = max(0, int(call.data.split(":")[-1]))
 
     limit = 20
-    offset = page * limit
     async with async_session_factory() as session:
-        repo = AuditLogRepository(session)
-        logs = await repo.get_recent(limit=limit + offset)
-        logs = list(logs)[offset: offset + limit]
+        logs = await AuditLogService(session).get_recent_page(page=page, limit=limit)
 
     if not logs:
         text = "🧾 <b>Audit log</b>\n\nЗаписей пока нет."
