@@ -71,13 +71,14 @@ async def cb_broadcast_target(call: CallbackQuery, state: FSMContext) -> None:
 @admin_only
 async def msg_broadcast_text(message: Message, bot: Bot, state: FSMContext) -> None:
     data = await state.get_data()
-    await state.clear()
     target = data.get("broadcast_target", "adm:bc_all")
     text = message.text or ""
 
     if not text.strip():
-        await message.answer("\u274c Пустое сообщение. Рассылка отменена.")
+        await message.answer("\u274c Пустое сообщение. Введите текст рассылки или /cancel.")
         return
+
+    await state.clear()
 
     async with async_session_factory() as session:
         user_repo = UserRepository(session)

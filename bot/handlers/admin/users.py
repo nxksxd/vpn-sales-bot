@@ -69,11 +69,12 @@ async def cb_user_search(call: CallbackQuery, state: FSMContext) -> None:
 @router.message(AdminStates.waiting_user_search)
 @admin_only
 async def msg_user_search(message: Message, state: FSMContext) -> None:
-    await state.clear()
     query = (message.text or "").strip()
     if not query:
         await message.answer("Пустой запрос.", reply_markup=admin_users_kb())
         return
+
+    await state.clear()
 
     async with async_session_factory() as session:
         repo = UserRepository(session)
@@ -181,9 +182,9 @@ async def cb_balance_change(call: CallbackQuery, state: FSMContext) -> None:
 @admin_only
 async def msg_balance_change(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
-    await state.clear()
     tid = data.get("target_user")
     if tid is None:
+        await state.clear()
         await message.answer("Ошибка: пользователь не выбран.")
         return
 
@@ -194,6 +195,8 @@ async def msg_balance_change(message: Message, state: FSMContext) -> None:
             reply_markup=admin_user_card_kb(tid),
         )
         return
+
+    await state.clear()
 
     async with async_session_factory() as session:
         admin_uc = AdminUseCases(session)
@@ -268,9 +271,9 @@ async def cb_send_user_message(call: CallbackQuery, state: FSMContext) -> None:
 @admin_only
 async def msg_send_user_message(message: Message, bot: Bot, state: FSMContext) -> None:
     data = await state.get_data()
-    await state.clear()
     tid = data.get("target_user")
     if tid is None:
+        await state.clear()
         await message.answer("Ошибка: пользователь не выбран.")
         return
 
@@ -278,6 +281,8 @@ async def msg_send_user_message(message: Message, bot: Bot, state: FSMContext) -
     if not text.strip():
         await message.answer("\u274c Пустое сообщение.")
         return
+
+    await state.clear()
 
     try:
         await bot.send_message(
