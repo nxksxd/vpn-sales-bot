@@ -13,6 +13,7 @@ from bot.database.repositories.subscription import SubscriptionRepository
 from bot.database.repositories.vpn_key import VpnKeyRepository
 from bot.domain_enums import AuditAction
 from bot.services.audit_log import AuditLogService
+from bot.services.subscription import SubscriptionService
 from bot.services.xui_client import XUIClient
 
 
@@ -96,6 +97,24 @@ class AdminKeyService:
             action=AuditAction.SUBSCRIPTION_EXTENDED,
             target_user_id=telegram_id,
             details=f"+{days}d",
+        )
+        return True
+
+    async def cancel_subscription(self, *, admin_id: int, telegram_id: int) -> bool:
+        active = await self.sub_repo.get_active_by_user(telegram_id)
+        if active is None:
+            return False
+
+        xui = XUIClient()
+        try:
+            await SubscriptionService(self.sub_repo.session, xui).deactivate(active)
+        finally:
+            await xui.close()
+
+        await AuditLogService(self.sub_repo.session).log(
+            admin_telegram_id=admin_id,
+            action=AuditAction.SUBSCRIPTION_CANCELLED,
+            target_user_id=telegram_id,
         )
         return True
 

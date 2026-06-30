@@ -461,31 +461,17 @@ async def cb_cancel_subscription(call: CallbackQuery) -> None:
     from bot.keyboards.admin_kb import admin_user_card_kb
 
     async with __import__("bot.database.session", fromlist=["async_session_factory"]).async_session_factory() as session:
-        active = await AdminKeyService(session).get_active_subscription(tid)
-        if active is None:
+        cancelled = await AdminKeyService(session).cancel_subscription(
+            admin_id=call.from_user.id if call.from_user else 0,
+            telegram_id=tid,
+        )
+        if not cancelled:
             if call.message:
                 await call.message.answer(
                     f"\u274c Нет активной подписки у {code(tid)}.",
                     parse_mode="HTML",
                 )
             return
-
-        xui = XUIClient()
-        try:
-            from bot.services.subscription import SubscriptionService
-            sub_service = SubscriptionService(session, xui)
-            await sub_service.deactivate(active)
-        finally:
-            await xui.close()
-
-        from bot.services.audit_log import AuditLogService
-        from bot.domain_enums import AuditAction
-        await AuditLogService(session).log(
-            admin_telegram_id=call.from_user.id if call.from_user else 0,
-            action=AuditAction.SUBSCRIPTION_CANCELLED,
-            target_user_id=tid,
-        )
-        await session.commit()
 
     if call.message:
         await call.message.edit_text(
