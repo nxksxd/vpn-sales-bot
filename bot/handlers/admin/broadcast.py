@@ -8,10 +8,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from bot.database.session import async_session_factory
-from bot.database.repositories.subscription import SubscriptionRepository
-from bot.database.repositories.user import UserRepository
 from bot.keyboards.admin_kb import admin_broadcast_kb, admin_main_kb
 from bot.middlewares.admin_check import admin_only
+from bot.services.admin_broadcast import AdminBroadcastService
 from bot.services.notification import NotificationService
 from bot.utils.formatters import esc
 
@@ -81,25 +80,7 @@ async def msg_broadcast_text(message: Message, bot: Bot, state: FSMContext) -> N
     await state.clear()
 
     async with async_session_factory() as session:
-        user_repo = UserRepository(session)
-        sub_repo = SubscriptionRepository(session)
-
-        if target == "adm:bc_all":
-            telegram_ids = list(await user_repo.get_all_telegram_ids())
-        elif target == "adm:bc_active":
-            active_subs = await sub_repo.get_all_active()
-            telegram_ids = [s.user_id for s in active_subs]
-        elif target == "adm:bc_expiring":
-            expiring = await sub_repo.get_expiring_soon(3)
-            telegram_ids = [s.user_id for s in expiring]
-        elif target == "adm:bc_new":
-            telegram_ids = list(await user_repo.get_segmented_users("new_users"))
-        elif target == "adm:bc_trial":
-            telegram_ids = list(await user_repo.get_segmented_users("trial_unused"))
-        elif target == "adm:bc_inactive":
-            telegram_ids = list(await user_repo.get_segmented_users("inactive"))
-        else:
-            telegram_ids = []
+        telegram_ids = await AdminBroadcastService(session).get_target_telegram_ids(target)
 
         if not telegram_ids:
             await message.answer(
