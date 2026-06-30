@@ -136,6 +136,43 @@ class AdminKeyService:
         finally:
             await xui.close()
 
+    async def deactivate_key(self, *, admin_id: int, telegram_id: int) -> bool:
+        active = await self.sub_repo.get_active_by_user(telegram_id)
+        if active is None:
+            return False
+
+        xui = XUIClient()
+        try:
+            await SubscriptionService(self.sub_repo.session, xui).deactivate(active)
+            await AuditLogService(self.sub_repo.session).log(
+                admin_telegram_id=admin_id,
+                action=AuditAction.KEY_DEACTIVATED,
+                target_user_id=telegram_id,
+                details="deactivated active key",
+            )
+        finally:
+            await xui.close()
+        return True
+
+    async def reactivate_key(self, *, admin_id: int, telegram_id: int) -> bool:
+        active = await self.get_latest_subscription(telegram_id)
+        if active is None:
+            return False
+
+        xui = XUIClient()
+        try:
+            await SubscriptionService(self.sub_repo.session, xui).reactivate_key(active)
+            await self.mark_subscription_active(active.id)
+            await AuditLogService(self.sub_repo.session).log(
+                admin_telegram_id=admin_id,
+                action=AuditAction.KEY_REACTIVATED,
+                target_user_id=telegram_id,
+                details="reactivated key",
+            )
+        finally:
+            await xui.close()
+        return True
+
     async def get_traffic_reset_target(
         self,
         telegram_id: int,

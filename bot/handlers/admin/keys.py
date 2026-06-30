@@ -7,13 +7,9 @@ from aiogram.types import CallbackQuery
 from loguru import logger
 
 from bot.database.session import async_session_factory
-from bot.domain_enums import AuditAction
 from bot.keyboards.admin_kb import admin_key_actions_kb, admin_user_card_kb
 from bot.middlewares.admin_check import admin_only
 from bot.services.admin_keys import AdminKeyService
-from bot.services.audit_log import AuditLogService
-from bot.services.subscription import SubscriptionService
-from bot.services.xui_client import XUIClient
 from bot.utils.formatters import code, esc
 
 router = Router(name="admin_keys")
@@ -112,30 +108,22 @@ async def cb_deactivate_key(call: CallbackQuery) -> None:
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        active = await AdminKeyService(session).get_active_subscription(tid)
-        if active is None:
+        try:
+            deactivated = await AdminKeyService(session).deactivate_key(
+                admin_id=call.from_user.id,
+                telegram_id=tid,
+            )
+        except Exception as e:
+            logger.error("Deactivation failed: {}", e)
+            deactivated = True
+
+        if not deactivated:
             if call.message:
                 await call.message.answer(
                     f"\u274c Нет активной подписки у {code(tid)}.",
                     parse_mode="HTML",
                 )
             return
-
-        xui = XUIClient()
-        try:
-            sub_service = SubscriptionService(session, xui)
-            await sub_service.deactivate(active)
-            audit = AuditLogService(session)
-            await audit.log(
-                call.from_user.id,
-                AuditAction.KEY_DEACTIVATED,
-                target_user_id=tid,
-                details="deactivated active key",
-            )
-        except Exception as e:
-            logger.error("Deactivation failed: {}", e)
-        finally:
-            await xui.close()
 
     if call.message:
         await call.message.edit_text(
@@ -152,33 +140,22 @@ async def cb_reactivate_key(call: CallbackQuery) -> None:
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        key_service = AdminKeyService(session)
-        active = await key_service.get_latest_subscription(tid)
+        try:
+            reactivated = await AdminKeyService(session).reactivate_key(
+                admin_id=call.from_user.id,
+                telegram_id=tid,
+            )
+        except Exception as e:
+            logger.error("Reactivation failed: {}", e)
+            reactivated = True
 
-        if active is None:
+        if not reactivated:
             if call.message:
                 await call.message.answer(
                     f"\u274c Нет подписки у {code(tid)}.",
                     parse_mode="HTML",
                 )
             return
-
-        xui = XUIClient()
-        try:
-            sub_service = SubscriptionService(session, xui)
-            await sub_service.reactivate_key(active)
-            await key_service.mark_subscription_active(active.id)
-            audit = AuditLogService(session)
-            await audit.log(
-                call.from_user.id,
-                AuditAction.KEY_REACTIVATED,
-                target_user_id=tid,
-                details="reactivated key",
-            )
-        except Exception as e:
-            logger.error("Reactivation failed: {}", e)
-        finally:
-            await xui.close()
 
     if call.message:
         await call.message.edit_text(
