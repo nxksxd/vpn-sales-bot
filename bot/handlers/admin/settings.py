@@ -16,10 +16,8 @@ from loguru import logger
 from bot.config import settings, BASE_DIR
 from bot.keyboards.admin_kb import admin_main_kb, admin_xui_settings_kb
 from bot.middlewares.admin_check import admin_only, is_admin
-from bot.domain_enums import AuditAction
 from bot.services.admin_catalog import AdminCatalogService
 from bot.services.admin_keys import AdminKeyService
-from bot.services.audit_log import AuditLogService
 from bot.services.xui_client import XUIClient
 from bot.utils.formatters import code
 
@@ -236,11 +234,10 @@ async def receive_xui_value(message: Message, state: FSMContext) -> None:
         reply_markup=admin_xui_settings_kb(),
     )
     async with __import__("bot.database.session", fromlist=["async_session_factory"]).async_session_factory() as session:
-        audit = AuditLogService(session)
-        await audit.log(
-            message.from_user.id,
-            AuditAction.SETTINGS_CHANGED,
-            details=f"field={field};value={display if field != 'xui_password' else '***'}",
+        await AdminCatalogService(session).log_settings_changed(
+            admin_id=message.from_user.id,
+            field=field,
+            display_value=display if field != "xui_password" else "***",
         )
     logger.info("Admin {} changed {} to {}", message.from_user.id, field,
                 display if field != "xui_password" else "***")

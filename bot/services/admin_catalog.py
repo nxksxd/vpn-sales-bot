@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.repositories.promo_code import PromoCodeRepository
 from bot.database.repositories.server_region import ServerRegionRepository
+from bot.domain_enums import AuditAction
+from bot.services.audit_log import AuditLogService
 
 
 @dataclass(frozen=True)
@@ -62,4 +64,11 @@ class AdminCatalogService:
                 )
                 for promo in promos
             ],
+        )
+
+    async def log_settings_changed(self, *, admin_id: int, field: str, display_value: str) -> None:
+        await AuditLogService(self.region_repo.session).log(
+            admin_telegram_id=admin_id,
+            action=AuditAction.SETTINGS_CHANGED,
+            details=f"field={field};value={display_value}",
         )
