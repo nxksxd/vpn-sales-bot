@@ -27,8 +27,6 @@ import json
 from bot.config import settings
 from bot.database.models import Subscription
 from bot.database.session import async_session_factory
-from bot.database.repositories.subscription import SubscriptionRepository
-from bot.database.repositories.vpn_key import VpnKeyRepository
 from bot.keyboards.user_kb import back_to_menu_kb, subscription_kb
 from bot.services.qr_generator import generate_qr_buffer
 from bot.services.subscription import SubscriptionService, UserFacingError
@@ -415,29 +413,21 @@ async def cb_check_key(call: CallbackQuery) -> None:
         return
 
     async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(user.id)
-
-        if active is None:
+        xui = XUIClient()
+        try:
+            service = SubscriptionService(session, xui)
+            active, db_key_inactive = await service.get_active_subscription_key_state(
+                user.id
+            )
+            ok, status_block = await _verify_client_on_panel(xui, active)
+        except UserFacingError as e:
             if call.message:
                 await call.message.edit_text(
-                    _no_key_text(),
+                    e.user_message,
                     parse_mode="HTML",
                     reply_markup=back_to_menu_kb(),
                 )
             return
-
-        # Make sure the DB-side record is still in shape.
-        key_repo = VpnKeyRepository(session)
-        db_key = (
-            await key_repo.get_by_client_id(active.xui_client_id)
-            if active.xui_client_id
-            else None
-        )
-
-        xui = XUIClient()
-        try:
-            ok, status_block = await _verify_client_on_panel(xui, active)
         finally:
             await xui.close()
 
@@ -450,7 +440,7 @@ async def cb_check_key(call: CallbackQuery) -> None:
             "добавленной в приложение ссылкой."
         )
         body_parts = [header, "", status_block]
-        if db_key is not None and not db_key.is_active:
+        if db_key_inactive:
             body_parts.append(
                 "\nℹ️ <i>В нашей базе ключ был помечен неактивным — "
                 "обратитесь в поддержку, если возникают проблемы с подключением.</i>"

@@ -626,14 +626,27 @@ class SubscriptionService:
                 )
                 raise _xui_error("update_client", e)
 
-    async def upgrade_active_subscription_link(self, telegram_id: int) -> str:
+    async def get_active_subscription_key_state(
+        self,
+        telegram_id: int,
+    ) -> tuple[Subscription, bool]:
         active = await self.sub_repo.get_active_by_user(telegram_id)
         if active is None:
             raise UserFacingError(
                 "🔑 <b>У вас пока нет активного ключа</b>\n\n"
                 "Оформите подписку, и ключ появится в этом меню.",
-                log_detail="active subscription not found for key upgrade",
+                log_detail="active subscription not found for key check",
             )
+
+        key = (
+            await self.key_repo.get_by_client_id(active.xui_client_id)
+            if active.xui_client_id
+            else None
+        )
+        return active, bool(key is not None and not key.is_active)
+
+    async def upgrade_active_subscription_link(self, telegram_id: int) -> str:
+        active, _ = await self.get_active_subscription_key_state(telegram_id)
         return await self.upgrade_to_subscription_link(active)
 
     async def upgrade_to_subscription_link(self, sub: Subscription) -> str:
