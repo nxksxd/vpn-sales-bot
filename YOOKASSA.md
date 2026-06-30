@@ -40,7 +40,7 @@ YOOKASSA_TRUST_X_FORWARDED_FOR=false
 | `YOOKASSA_SECRET_KEY` | Секретный ключ API | Да |
 | `YOOKASSA_RETURN_URL` | URL возврата после оплаты | Нет (по умолчанию: `https://t.me/portalkey_bot`) |
 | `YOOKASSA_WEBHOOK_PORT` | Порт для приёма webhook-уведомлений | Нет (по умолчанию: `8080`) |
-| `YOOKASSA_WEBHOOK_SECRET` | Секретный суффикс webhook URL: `/yookassa/webhook/<secret>` | Рекомендуется |
+| `YOOKASSA_WEBHOOK_SECRET` | Секретный суффикс webhook URL: `/yookassa/webhook/<secret>` | Да |
 | `YOOKASSA_TRUST_X_FORWARDED_FOR` | Доверять `X-Forwarded-For` только за собственным reverse proxy | Нет |
 
 Чтобы безопасно записать секретный ключ в локальный `.env` без вывода в терминал:
@@ -56,9 +56,9 @@ python scripts/set_yookassa_secret.py
 ЮKassa отправляет уведомления о статусе платежа на ваш сервер. Настройте URL webhook:
 
 1. Перейдите в [кабинет ЮKassa](https://yookassa.ru/my/shop-settings) → **Интеграция** → **HTTP-уведомления**
-2. Укажите URL:
-   - без secret path: `http://ВАШ_СЕРВЕР:8080/yookassa/webhook`
-   - с `YOOKASSA_WEBHOOK_SECRET`: `http://ВАШ_СЕРВЕР:8080/yookassa/webhook/<secret>`
+2. Укажите URL с обязательным secret path: `http://ВАШ_СЕРВЕР:8080/yookassa/webhook/<secret>`
+   - `<secret>` должен совпадать с `YOOKASSA_WEBHOOK_SECRET` из `.env`
+   - endpoint без secret path (`/yookassa/webhook`) приложением больше не регистрируется
 3. Выберите события: **payment.succeeded**, **payment.canceled**
 4. Сохраните
 
@@ -111,7 +111,7 @@ server {
 
 ## Как протестировать оплату
 
-1. Убедитесь что `.env` содержит `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY` и, желательно, `YOOKASSA_WEBHOOK_SECRET`
+1. Убедитесь что `.env` содержит `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY` и `YOOKASSA_WEBHOOK_SECRET`
 2. Перезапустите бот: `docker compose up -d --build`
 3. В Telegram: нажмите **Пополнить баланс** → **Оплата через ЮKassa**
 4. Выберите сумму → перейдите по ссылке оплаты

@@ -290,16 +290,29 @@ async def _notify_user_payment_canceled(telegram_id: int) -> None:
         logger.error("Failed to notify user {} about cancellation: {}", telegram_id, e)
 
 
+def _webhook_path() -> str | None:
+    """Return the secret webhook path, or None when YooKassa webhooks are unsafe/disabled."""
+    if not settings.yookassa_shop_id or not settings.yookassa_secret_key:
+        return None
+    if not settings.yookassa_webhook_secret:
+        return None
+    return f"/yookassa/webhook/{settings.yookassa_webhook_secret}"
+
+
 async def start_webhook_server() -> web.AppRunner | None:
     """Start aiohttp server for YooKassa webhooks. Returns runner or None if disabled."""
-    if not settings.yookassa_shop_id or not settings.yookassa_secret_key:
-        logger.info("YooKassa not configured, webhook server disabled")
+    webhook_path = _webhook_path()
+    if webhook_path is None:
+        if settings.yookassa_shop_id and settings.yookassa_secret_key:
+            logger.error(
+                "YooKassa configured without YOOKASSA_WEBHOOK_SECRET; "
+                "webhook server disabled to avoid exposing a public endpoint"
+            )
+        else:
+            logger.info("YooKassa not configured, webhook server disabled")
         return None
 
     app = web.Application()
-    webhook_path = "/yookassa/webhook"
-    if settings.yookassa_webhook_secret:
-        webhook_path = f"{webhook_path}/{settings.yookassa_webhook_secret}"
     app.router.add_post(webhook_path, handle_webhook)
     # Health check endpoint
     app.router.add_get("/health", _health_check)

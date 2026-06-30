@@ -23,7 +23,11 @@ class YooKassaTopupStates(StatesGroup):
 
 
 def _yookassa_available() -> bool:
-    return bool(settings.yookassa_shop_id and settings.yookassa_secret_key)
+    return bool(
+        settings.yookassa_shop_id
+        and settings.yookassa_secret_key
+        and settings.yookassa_webhook_secret
+    )
 
 
 @router.callback_query(F.data == "topup:yookassa")

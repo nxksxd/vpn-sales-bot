@@ -44,10 +44,15 @@ async def test_yookassa_unavailable_shows_error():
     ) as mock_settings:
         mock_settings.yookassa_shop_id = ""
         mock_settings.yookassa_secret_key = ""
+        mock_settings.yookassa_webhook_secret = ""
         assert _yookassa_available() is False
 
         mock_settings.yookassa_shop_id = "123456"
         mock_settings.yookassa_secret_key = "test_key"
+        mock_settings.yookassa_webhook_secret = ""
+        assert _yookassa_available() is False
+
+        mock_settings.yookassa_webhook_secret = "long-random-secret-path"
         assert _yookassa_available() is True
 
 
@@ -146,6 +151,32 @@ def test_webhook_uses_x_forwarded_for_only_when_enabled(monkeypatch):
     )
 
     assert yookassa_webhook._request_client_ip(cast(Any, Request())) == "185.71.76.1"
+
+
+def test_webhook_path_requires_secret_when_yookassa_configured(monkeypatch):
+    """YooKassa must not expose a webhook endpoint without the secret suffix."""
+    from bot.services import yookassa_webhook
+
+    monkeypatch.setattr(yookassa_webhook.settings, "yookassa_shop_id", "123456")
+    monkeypatch.setattr(yookassa_webhook.settings, "yookassa_secret_key", "test_key")
+    monkeypatch.setattr(yookassa_webhook.settings, "yookassa_webhook_secret", "")
+
+    assert yookassa_webhook._webhook_path() is None
+
+
+def test_webhook_path_uses_secret_suffix(monkeypatch):
+    """Only the secret webhook path should be registered when YooKassa is enabled."""
+    from bot.services import yookassa_webhook
+
+    monkeypatch.setattr(yookassa_webhook.settings, "yookassa_shop_id", "123456")
+    monkeypatch.setattr(yookassa_webhook.settings, "yookassa_secret_key", "test_key")
+    monkeypatch.setattr(
+        yookassa_webhook.settings,
+        "yookassa_webhook_secret",
+        "long-random-secret-path",
+    )
+
+    assert yookassa_webhook._webhook_path() == "/yookassa/webhook/long-random-secret-path"
 
 
 @pytest.mark.asyncio
