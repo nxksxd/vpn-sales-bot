@@ -11,6 +11,8 @@ from bot.database.repositories.subscription import SubscriptionRepository
 from bot.database.repositories.transaction import TransactionRepository
 from bot.database.repositories.user import UserRepository
 from bot.database.repositories.vpn_key import VpnKeyRepository
+from bot.domain_enums import AuditAction
+from bot.services.audit_log import AuditLogService
 
 
 @dataclass(frozen=True)
@@ -128,6 +130,13 @@ class AdminUserService:
     async def get_user_ban_status(self, telegram_id: int) -> bool | None:
         user = await self.user_repo.get_by_telegram_id(telegram_id)
         return None if user is None else bool(user.is_banned)
+
+    async def log_user_message_sent(self, *, admin_id: int, telegram_id: int) -> None:
+        await AuditLogService(self.user_repo.session).log(
+            admin_telegram_id=admin_id,
+            action=AuditAction.USER_MESSAGE_SENT,
+            target_user_id=telegram_id,
+        )
 
     @staticmethod
     def _user_item(user: object) -> AdminUserListItem:

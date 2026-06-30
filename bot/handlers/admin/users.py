@@ -292,14 +292,10 @@ async def msg_send_user_message(message: Message, bot: Bot, state: FSMContext) -
             reply_markup=admin_user_card_kb(tid),
         )
         async with async_session_factory() as session:
-            from bot.services.audit_log import AuditLogService
-            from bot.domain_enums import AuditAction
-            await AuditLogService(session).log(
-                admin_telegram_id=message.from_user.id if message.from_user else 0,
-                action=AuditAction.USER_MESSAGE_SENT,
-                target_user_id=tid,
+            await AdminUserService(session).log_user_message_sent(
+                admin_id=message.from_user.id if message.from_user else 0,
+                telegram_id=tid,
             )
-            await session.commit()
     except Exception as e:
         logger.error("Failed to send message to user {}: {}", tid, e)
         await message.answer(
