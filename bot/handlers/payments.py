@@ -7,9 +7,7 @@ from aiogram.types import Message, PreCheckoutQuery
 from loguru import logger
 
 from bot.database.session import async_session_factory
-from bot.database.repositories.payment_event import PaymentEventRepository
 from bot.database.repositories.user import UserRepository
-from bot.domain_enums import PaymentStatus
 from bot.keyboards.user_kb import main_menu_kb
 from bot.services.notification import NotificationService
 from bot.services.payment import PaymentService
@@ -105,35 +103,18 @@ async def successful_payment_handler(message: Message, bot: Bot) -> None:
         return
 
     async with async_session_factory() as session:
-        payment_events = PaymentEventRepository(session)
         payment_service = PaymentService(session)
-        rub_amount = payment_service.user_repo and __import__("bot.config", fromlist=["settings"]).settings.stars_to_rub(amount_stars)
-        await payment_events.create(
-            user_id=user.id,
-            status=PaymentStatus.PENDING,
-            amount_stars=amount_stars,
-            amount_rub=rub_amount,
-            charge_id=charge_id,
-            payload=payload,
-        )
-        rub_credited = await payment_service.process_topup(
+        rub_credited = await payment_service.process_telegram_successful_topup(
             telegram_id=user.id,
             amount_stars=amount_stars,
             charge_id=charge_id,
+            payload=payload,
         )
 
         if rub_credited > 0:
-            await payment_events.update_status(charge_id, PaymentStatus.PAID)
             metrics.inc(metrics.PAYMENTS_SUCCEEDED)
         else:
-            await payment_events.update_status(
-                charge_id,
-                PaymentStatus.FAILED,
-                error_message="duplicate_charge",
-            )
             metrics.inc(metrics.PAYMENTS_FAILED)
-
-        if rub_credited == 0:
             await message.answer(
                 "⚠️ Платёж уже был обработан ранее.",
                 reply_markup=main_menu_kb(),
