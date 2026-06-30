@@ -129,3 +129,22 @@ class AdminKeyService:
             inbound_id=key.xui_inbound_id,
             email=key.email,
         )
+
+    async def reset_traffic(self, *, admin_id: int, telegram_id: int) -> bool:
+        target = await self.get_traffic_reset_target(telegram_id)
+        if target is None:
+            return False
+
+        xui = XUIClient()
+        try:
+            await xui.reset_client_traffic(target.inbound_id, target.email)
+        finally:
+            await xui.close()
+
+        await AuditLogService(self.sub_repo.session).log(
+            admin_telegram_id=admin_id,
+            action=AuditAction.TRAFFIC_RESET,
+            target_user_id=telegram_id,
+            details=f"email={target.email}",
+        )
+        return True

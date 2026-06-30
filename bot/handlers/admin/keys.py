@@ -13,7 +13,7 @@ from bot.middlewares.admin_check import admin_only
 from bot.services.admin_keys import AdminKeyService
 from bot.services.audit_log import AuditLogService
 from bot.services.subscription import SubscriptionService
-from bot.services.xui_client import XUIClient, XuiError
+from bot.services.xui_client import XUIClient
 from bot.utils.formatters import code, esc
 
 router = Router(name="admin_keys")
@@ -205,35 +205,27 @@ async def cb_reset_traffic(call: CallbackQuery) -> None:
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        target = await AdminKeyService(session).get_traffic_reset_target(tid)
-        if target is None:
+        try:
+            reset = await AdminKeyService(session).reset_traffic(
+                admin_id=call.from_user.id,
+                telegram_id=tid,
+            )
+        except Exception as e:
+            logger.error("Traffic reset failed: {}", e)
+            if call.message:
+                await call.message.answer(
+                    f"\u274c Ошибка сброса трафика: {esc(str(e))}",
+                    parse_mode="HTML",
+                )
+            return
+
+        if not reset:
             if call.message:
                 await call.message.answer(
                     f"\u274c Нет активного ключа у {code(tid)}.",
                     parse_mode="HTML",
                 )
             return
-
-        xui = XUIClient()
-        try:
-            await xui.reset_client_traffic(target.inbound_id, target.email)
-            audit = AuditLogService(session)
-            await audit.log(
-                call.from_user.id,
-                AuditAction.TRAFFIC_RESET,
-                target_user_id=tid,
-                details=f"email={target.email}",
-            )
-        except XuiError as e:
-            logger.error("Traffic reset failed: {}", e)
-            if call.message:
-                await call.message.answer(
-                    f"\u274c Ошибка сброса трафика: {esc(e.message)}",
-                    parse_mode="HTML",
-                )
-            return
-        finally:
-            await xui.close()
 
     if call.message:
         await call.message.edit_text(
