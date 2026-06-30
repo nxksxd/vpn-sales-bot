@@ -32,6 +32,7 @@ from bot.database.repositories.vpn_key import VpnKeyRepository
 from bot.keyboards.user_kb import back_to_menu_kb, subscription_kb
 from bot.services.qr_generator import generate_qr_buffer
 from bot.services.subscription import SubscriptionService, UserFacingError
+from bot.services.subscription_view import ActiveSubscriptionView, SubscriptionViewService
 from bot.services.xui_client import XUIClient, XuiError
 from bot.utils.formatters import code
 
@@ -43,7 +44,9 @@ router = Router(name="keys")
 # ── Shared rendering helpers ─────────────────────────────────────────
 
 
-def _resolve_key_target(sub: Subscription) -> tuple[str | None, bool]:
+def _resolve_key_target(
+    sub: Subscription | ActiveSubscriptionView,
+) -> tuple[str | None, bool]:
     """Return ``(url_for_user, is_subscription_link)``.
 
     * ``url_for_user`` — what we put into the bot message / QR code.
@@ -84,8 +87,7 @@ async def cb_show_key(call: CallbackQuery) -> None:
         return
 
     async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(user.id)
+        active = await SubscriptionViewService(session).get_active_subscription(user.id)
 
     if active is None:
         if call.message:
@@ -150,8 +152,7 @@ async def cb_show_qr(call: CallbackQuery, bot: Bot) -> None:
         return
 
     async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(user.id)
+        active = await SubscriptionViewService(session).get_active_subscription(user.id)
 
     if active is None:
         if call.message:
