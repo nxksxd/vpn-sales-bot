@@ -17,7 +17,6 @@ from loguru import logger
 
 from bot.config import settings
 from bot.database.session import async_session_factory
-from bot.database.repositories.server_region import ServerRegionRepository
 from bot.keyboards.user_kb import (
     back_to_menu_kb,
     buy_plan_kb,
@@ -56,10 +55,9 @@ async def cb_regions(call: CallbackQuery) -> None:
     """Legacy alias — redirect to the new product selection screen."""
     await call.answer()
     async with async_session_factory() as session:
-        repo = ServerRegionRepository(session)
         region_rows = [
             {"code": region.code, "label": region.label}
-            for region in await repo.get_active_regions()
+            for region in await SubscriptionViewService(session).get_active_regions()
         ]
     text = (
         "🌍 <b>Выбор локации</b>\n\n"
@@ -94,10 +92,9 @@ async def cb_product_selected(call: CallbackQuery) -> None:
     promo_code = parts[2] if len(parts) > 2 else None
 
     async with async_session_factory() as session:
-        repo = ServerRegionRepository(session)
         region_rows = [
             {"code": region.code, "label": region.label}
-            for region in await repo.get_active_regions()
+            for region in await SubscriptionViewService(session).get_active_regions()
         ]
 
     if not region_rows:

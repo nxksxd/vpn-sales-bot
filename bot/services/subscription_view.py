@@ -8,8 +8,15 @@ import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
+from bot.database.repositories.server_region import ServerRegionRepository
 from bot.database.repositories.subscription import SubscriptionRepository
 from bot.database.repositories.user import UserRepository
+
+
+@dataclass(frozen=True)
+class RegionOptionView:
+    code: str
+    label: str
 
 
 @dataclass(frozen=True)
@@ -45,6 +52,11 @@ class SubscriptionViewService:
     def __init__(self, session: AsyncSession) -> None:
         self.sub_repo = SubscriptionRepository(session)
         self.user_repo = UserRepository(session)
+        self.region_repo = ServerRegionRepository(session)
+
+    async def get_active_regions(self) -> list[RegionOptionView]:
+        regions = await self.region_repo.get_active_regions()
+        return [RegionOptionView(code=region.code, label=region.label) for region in regions]
 
     async def get_active_subscription(
         self, telegram_id: int
