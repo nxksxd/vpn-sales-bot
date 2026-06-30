@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -13,9 +14,7 @@ class _DummyXUI:
 
 @pytest.mark.asyncio
 async def test_subscription_use_cases_resolve_region_and_promo() -> None:
-    db_path = Path("/var/folders/kl/frv_wd1s22l2_2j521g5t0n80000gn/T/opencode/test_subscription_uc.sqlite")
-    if db_path.exists():
-        db_path.unlink()
+    db_path = Path(tempfile.mkdtemp()) / "test_subscription_uc.sqlite"
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
     session_factory = async_sessionmaker(engine, expire_on_commit=False)

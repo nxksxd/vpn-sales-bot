@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -9,9 +10,7 @@ from bot.database.repositories.promo_code import PromoCodeRepository
 
 @pytest.mark.asyncio
 async def test_promo_code_repository_increments_usage_and_deactivates() -> None:
-    db_path = Path("/var/folders/kl/frv_wd1s22l2_2j521g5t0n80000gn/T/opencode/test_promos.sqlite")
-    if db_path.exists():
-        db_path.unlink()
+    db_path = Path(tempfile.mkdtemp()) / "test_promos.sqlite"
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
     session_factory = async_sessionmaker(engine, expire_on_commit=False)

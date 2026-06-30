@@ -12,9 +12,7 @@ from bot.services.payment import PaymentService
 
 @pytest.mark.asyncio
 async def test_payment_event_status_update() -> None:
-    db_path = Path("/var/folders/kl/frv_wd1s22l2_2j521g5t0n80000gn/T/opencode/test_payment_event.sqlite")
-    if db_path.exists():
-        db_path.unlink()
+    db_path = Path(tempfile.mkdtemp()) / "test_payment_event.sqlite"
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
