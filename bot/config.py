@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://vpn_bot:change_me@postgres:5432/vpn_bot"
 
+    # FSM storage. Empty = in-memory (dev); set redis://... in production.
+    redis_url: str = ""
+
     # 3x-ui Panel
     xui_url: str = "http://127.0.0.1:2053"
     xui_username: str = "admin"

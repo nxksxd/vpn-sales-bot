@@ -12,6 +12,7 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.fsm.storage.base import BaseStorage
 from aiogram.fsm.storage.memory import MemoryStorage
 from loguru import logger
 
@@ -60,8 +61,20 @@ logger.add(
 )
 
 
+def build_fsm_storage() -> BaseStorage:
+    """Build FSM storage: Redis in production when configured, memory otherwise."""
+    if settings.redis_url:
+        from aiogram.fsm.storage.redis import RedisStorage
+
+        logger.info("Using Redis FSM storage")
+        return RedisStorage.from_url(settings.redis_url)
+
+    logger.warning("Using in-memory FSM storage; set REDIS_URL for production persistence")
+    return MemoryStorage()
+
+
 def build_dispatcher() -> Dispatcher:
-    dp = Dispatcher(storage=MemoryStorage())
+    dp = Dispatcher(storage=build_fsm_storage())
 
     dp.message.middleware(BanCheckMiddleware())
     dp.message.middleware(ThrottlingMiddleware())
