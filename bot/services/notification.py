@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import datetime
+import asyncio
 from typing import Optional
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import InlineKeyboardMarkup
 from loguru import logger
 from sqlalchemy import select
@@ -152,6 +154,8 @@ class NotificationService:
                 reply_markup=reply_markup,
             )
             return True
+        except TelegramRetryAfter:
+            raise
         except Exception as e:
             logger.warning(
                 "Failed to send message to {}: {}", telegram_id, e
@@ -163,13 +167,25 @@ class NotificationService:
         telegram_ids: list[int],
         text: str,
         reply_markup: Optional[InlineKeyboardMarkup] = None,
+        delay_seconds: float = 0.05,
     ) -> tuple[int, int]:
         sent = 0
         failed = 0
-        for tg_id in telegram_ids:
-            ok = await self.send_custom(tg_id, text, reply_markup)
+        for index, tg_id in enumerate(telegram_ids):
+            try:
+                ok = await self.send_custom(tg_id, text, reply_markup)
+            except TelegramRetryAfter as e:
+                logger.warning(
+                    "Telegram flood limit during broadcast: retry_after={}s",
+                    e.retry_after,
+                )
+                await asyncio.sleep(float(e.retry_after))
+                ok = await self.send_custom(tg_id, text, reply_markup)
             if ok:
                 sent += 1
             else:
                 failed += 1
+
+            if delay_seconds > 0 and index < len(telegram_ids) - 1:
+                await asyncio.sleep(delay_seconds)
         return sent, failed
