@@ -7,7 +7,7 @@ from collections import defaultdict, deque
 from typing import Any, Awaitable, Callable, Deque, Dict, Tuple
 
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject
+from aiogram.types import CallbackQuery, TelegramObject
 
 from bot.config import settings
 
@@ -92,3 +92,60 @@ class ThrottlingMiddleware(BaseMiddleware):
         except Exception:
             pass
         return None
+
+
+class CallbackDebounceMiddleware(BaseMiddleware):
+    """Short per-action debounce for callbacks with expensive side effects."""
+
+    DEFAULT_SECONDS: float = 3.0
+    GC_INTERVAL_SECONDS: int = 300
+    DANGEROUS_PREFIXES = (
+        "confirm_buy:",
+        "yk_amount:",
+    )
+    DANGEROUS_EXACT = {"sub:trial"}
+
+    def __init__(self, seconds: float = DEFAULT_SECONDS) -> None:
+        self.seconds = seconds
+        self._seen_until: Dict[Tuple[int, str], float] = {}
+        self._last_gc: float = 0.0
+
+    def _gc(self, now: float) -> None:
+        if now - self._last_gc < self.GC_INTERVAL_SECONDS:
+            return
+        for key, expires_at in list(self._seen_until.items()):
+            if expires_at <= now:
+                self._seen_until.pop(key, None)
+        self._last_gc = now
+
+    def _action_key(self, callback_data: str) -> str | None:
+        if callback_data in self.DANGEROUS_EXACT:
+            return callback_data
+        for prefix in self.DANGEROUS_PREFIXES:
+            if callback_data.startswith(prefix):
+                return callback_data
+        return None
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: Dict[str, Any],
+    ) -> Any:
+        if not isinstance(event, CallbackQuery):
+            return await handler(event, data)
+
+        uid = event.from_user.id if event.from_user else None
+        action = self._action_key(event.data or "")
+        if uid is None or action is None:
+            return await handler(event, data)
+
+        now = time.monotonic()
+        self._gc(now)
+        key = (uid, action)
+        if self._seen_until.get(key, 0.0) > now:
+            await event.answer("Уже обрабатываю. Подождите пару секунд.", show_alert=False)
+            return None
+
+        self._seen_until[key] = now + self.seconds
+        return await handler(event, data)

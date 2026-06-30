@@ -38,7 +38,7 @@ from bot.handlers.admin import settings as h_admin_settings
 from bot.handlers.admin import stats as h_admin_stats
 from bot.handlers.admin import users as h_admin_users
 from bot.middlewares.auth import BanCheckMiddleware
-from bot.middlewares.throttling import ThrottlingMiddleware
+from bot.middlewares.throttling import CallbackDebounceMiddleware, ThrottlingMiddleware
 from bot.scheduler.tasks import setup_scheduler
 from bot.services.xui_client import XUIClient
 from bot.utils.observability import ensure_directory, init_sentry, log_event
@@ -66,6 +66,7 @@ def build_dispatcher() -> Dispatcher:
     dp.message.middleware(BanCheckMiddleware())
     dp.message.middleware(ThrottlingMiddleware())
     dp.callback_query.middleware(BanCheckMiddleware())
+    dp.callback_query.middleware(CallbackDebounceMiddleware())
     dp.callback_query.middleware(ThrottlingMiddleware())
 
     dp.include_router(h_start.router)
