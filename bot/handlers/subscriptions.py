@@ -29,6 +29,7 @@ from bot.keyboards.user_kb import (
 )
 from bot.keyboards.product_kb import PRODUCTS, product_select_kb, region_select_kb
 from bot.services.notification import NotificationService
+from bot.services.payment import PaymentService
 from bot.services.subscription import SubscriptionService, UserFacingError
 from bot.services.subscription_use_cases import SubscriptionUseCases
 from bot.services.xui_client import XUIClient
@@ -329,10 +330,11 @@ async def cb_buy_menu(call: CallbackQuery) -> None:
     """
     await call.answer()
     async with async_session_factory() as session:
-        user_repo = UserRepository(session)
-        db_user = await user_repo.get_by_telegram_id(call.from_user.id)
+        balance = await PaymentService(session).get_user_balance_or_default(
+            call.from_user.id,
+            0,
+        )
 
-    balance = db_user.balance if db_user else 0
     text = (
         "🛒 <b>Купить подписку</b>\n\n"
         f"💰 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
@@ -379,13 +381,14 @@ async def cb_buy_plan(call: CallbackQuery) -> None:
         return
 
     async with async_session_factory() as session:
-        user_repo = UserRepository(session)
-        db_user = await user_repo.get_by_telegram_id(call.from_user.id)
+        balance = await PaymentService(session).get_user_balance_or_default(
+            call.from_user.id,
+            0,
+        )
         uc = SubscriptionUseCases(session, XUIClient())
         promo = await uc.resolve_promo(promo_code)
         region = await uc.resolve_region(region_code)
 
-    balance = db_user.balance if db_user else 0
     plan_rub = plan["rub"]
     if promo is not None:
         plan_rub = max(0, round(plan_rub * (100 - promo.discount_percent) / 100))
