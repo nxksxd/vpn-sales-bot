@@ -20,6 +20,7 @@ from bot.services.notification import NotificationService
 from bot.services.payment import PaymentService
 from bot.services.profile import UserProfileService
 from bot.services.start import StartService
+from bot.services.subscription_view import SubscriptionViewService
 from bot.services.user_settings import UserSettingsService
 
 router = Router(name="start")
@@ -130,7 +131,6 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
         return
 
     from bot.keyboards.product_kb import product_select_kb, region_select_kb  # noqa: F401
-    from bot.database.repositories.subscription import SubscriptionRepository
     from bot.keyboards.user_kb import (
         back_to_menu_kb,
         guide_kb,
@@ -164,8 +164,7 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
             await message.answer(msg, parse_mode="HTML", reply_markup=back_to_menu_kb())
 
         elif callback_data == "u:subs":
-            sub_repo = SubscriptionRepository(session)
-            active = await sub_repo.get_active_by_user(user.id)
+            active = await SubscriptionViewService(session).get_active_subscription(user.id)
             if active:
                 from bot.utils.formatters import fmt_status, fmt_traffic_limit, days_until
                 days_left = days_until(active.expires_at)
@@ -181,7 +180,7 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
                     msg,
                     parse_mode="HTML",
                     reply_markup=subscription_kb(
-                        has_active=True, is_legacy=not active.sub_id
+                        has_active=True, is_legacy=active.is_legacy
                     ),
                 )
             else:
@@ -219,23 +218,21 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
             )
 
         elif callback_data == "sub:show_key":
-            sub_repo = SubscriptionRepository(session)
-            active = await sub_repo.get_active_by_user(user.id)
-            sub_url = settings.subscription_url(active.sub_id) if active else None
-            if active is None or (not sub_url and not active.vless_link):
+            active = await SubscriptionViewService(session).get_active_subscription(user.id)
+            if active is None or (not active.subscription_url and not active.vless_link):
                 await message.answer(
                     "🔑 <b>У вас пока нет активного ключа</b>\n\n"
                     "Оформите подписку, и ключ появится в этом меню.",
                     parse_mode="HTML",
                     reply_markup=back_to_menu_kb(),
                 )
-            elif sub_url:
+            elif active.subscription_url:
                 msg = (
                     "🔗 <b>Ваша ссылка-подписка</b>\n\n"
                     "Скопируйте её и добавьте в приложение (V2RayTun, Hiddify, "
                     "v2rayNG, Streisand и т.п.) как <b>«Subscription»</b> / "
                     "<b>«Подписка»</b>:\n\n"
-                    f"{code(sub_url)}\n\n"
+                    f"{code(active.subscription_url)}\n\n"
                     "📱 <i>Тапните по ссылке — она скопируется. "
                     "Конфиг будет обновляться автоматически.</i>"
                 )
