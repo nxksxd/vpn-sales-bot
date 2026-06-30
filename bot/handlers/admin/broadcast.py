@@ -96,14 +96,12 @@ async def msg_broadcast_text(message: Message, bot: Bot, state: FSMContext) -> N
         notif = NotificationService(bot, session)
         sent, failed = await notif.broadcast(telegram_ids, esc(text))
 
-        from bot.services.audit_log import AuditLogService
-        from bot.domain_enums import AuditAction
-        await AuditLogService(session).log(
-            admin_telegram_id=message.from_user.id if message.from_user else 0,
-            action=AuditAction.BROADCAST_SENT,
-            details=f"target={target} sent={sent} failed={failed}",
+        await AdminBroadcastService(session).log_broadcast_sent(
+            admin_id=message.from_user.id if message.from_user else 0,
+            target=target,
+            sent=sent,
+            failed=failed,
         )
-        await session.commit()
 
     await message.answer(
         f"\u2705 <b>Рассылка завершена</b>\n\n"

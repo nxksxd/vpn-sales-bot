@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database.repositories.subscription import SubscriptionRepository
 from bot.database.repositories.user import UserRepository
+from bot.domain_enums import AuditAction
+from bot.services.audit_log import AuditLogService
 
 
 class AdminBroadcastService:
@@ -29,3 +31,17 @@ class AdminBroadcastService:
         if target == "adm:bc_inactive":
             return list(await self.user_repo.get_segmented_users("inactive"))
         return []
+
+    async def log_broadcast_sent(
+        self,
+        *,
+        admin_id: int,
+        target: str,
+        sent: int,
+        failed: int,
+    ) -> None:
+        await AuditLogService(self.user_repo.session).log(
+            admin_telegram_id=admin_id,
+            action=AuditAction.BROADCAST_SENT,
+            details=f"target={target} sent={sent} failed={failed}",
+        )
