@@ -18,6 +18,7 @@ from bot.keyboards.admin_kb import admin_main_kb, admin_xui_settings_kb
 from bot.middlewares.admin_check import admin_only, is_admin
 from bot.domain_enums import AuditAction
 from bot.services.admin_catalog import AdminCatalogService
+from bot.services.admin_keys import AdminKeyService
 from bot.services.audit_log import AuditLogService
 from bot.services.xui_client import XUIClient
 from bot.utils.formatters import code
@@ -381,14 +382,11 @@ async def cb_admin_subscription(call: CallbackQuery) -> None:
     await call.answer()
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
-    from bot.database.session import async_session_factory
-    from bot.database.repositories.subscription import SubscriptionRepository
     from bot.keyboards.admin_kb import admin_sub_actions_kb
     from bot.utils.formatters import fmt_date, fmt_plan, fmt_status, days_until, pluralize_days
 
-    async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(tid)
+    async with __import__("bot.database.session", fromlist=["async_session_factory"]).async_session_factory() as session:
+        active = await AdminKeyService(session).get_active_subscription(tid)
 
     if active is None:
         text = f"\U0001f4c5 У пользователя {code(tid)} нет активной подписки."
