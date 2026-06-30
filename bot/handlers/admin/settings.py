@@ -492,13 +492,10 @@ async def cb_cancel_subscription(call: CallbackQuery) -> None:
     await call.answer()
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
-    from bot.database.session import async_session_factory
-    from bot.database.repositories.subscription import SubscriptionRepository
     from bot.keyboards.admin_kb import admin_user_card_kb
 
-    async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(tid)
+    async with __import__("bot.database.session", fromlist=["async_session_factory"]).async_session_factory() as session:
+        active = await AdminKeyService(session).get_active_subscription(tid)
         if active is None:
             if call.message:
                 await call.message.answer(
