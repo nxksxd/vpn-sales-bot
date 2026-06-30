@@ -7,7 +7,6 @@ from aiogram.types import Message, PreCheckoutQuery
 from loguru import logger
 
 from bot.database.session import async_session_factory
-from bot.database.repositories.user import UserRepository
 from bot.keyboards.user_kb import main_menu_kb
 from bot.services.notification import NotificationService
 from bot.services.payment import PaymentService
@@ -39,19 +38,11 @@ async def pre_checkout_handler(pre_checkout: PreCheckoutQuery) -> None:
         return
 
     async with async_session_factory() as session:
-        repo = UserRepository(session)
-        db_user = await repo.get_by_telegram_id(user.id)
+        payment_service = PaymentService(session)
+        validation_error = await payment_service.validate_telegram_topup_allowed(user.id)
 
-    if db_user is None:
-        await pre_checkout.answer(
-            ok=False, error_message="Пользователь не зарегистрирован. Отправьте /start."
-        )
-        return
-
-    if db_user.is_banned:
-        await pre_checkout.answer(
-            ok=False, error_message="Ваш аккаунт заблокирован."
-        )
+    if validation_error is not None:
+        await pre_checkout.answer(ok=False, error_message=validation_error)
         return
 
     await pre_checkout.answer(ok=True)
@@ -121,9 +112,9 @@ async def successful_payment_handler(message: Message, bot: Bot) -> None:
             )
             return
 
-        repo = UserRepository(session)
-        db_user = await repo.get_by_telegram_id(user.id)
-        new_balance = db_user.balance if db_user else rub_credited
+        new_balance = await payment_service.get_user_balance_or_default(
+            user.id, rub_credited
+        )
 
         notif = NotificationService(bot, session)
         await notif.send(

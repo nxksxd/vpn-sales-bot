@@ -22,6 +22,35 @@ class PaymentService:
         self.tx_repo = TransactionRepository(session)
         self.event_repo = PaymentEventRepository(session)
 
+    async def validate_telegram_topup_allowed(self, telegram_id: int) -> str | None:
+        """Return a user-facing pre-checkout error, or None when top-up is allowed."""
+        result = await self.session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            return "Пользователь не зарегистрирован. Отправьте /start."
+        if user.is_banned:
+            return "Ваш аккаунт заблокирован."
+        return None
+
+    async def get_user_balance_or_default(
+        self, telegram_id: int, default_balance: int
+    ) -> int:
+        """Return current user balance, or a fallback when user row is unavailable."""
+        result = await self.session.execute(
+            select(User.balance).where(User.telegram_id == telegram_id)
+        )
+        balance = result.scalar_one_or_none()
+        return default_balance if balance is None else balance
+
+    async def get_user_balance(self, telegram_id: int) -> int | None:
+        """Return current user balance in rubles, or None when user is missing."""
+        result = await self.session.execute(
+            select(User.balance).where(User.telegram_id == telegram_id)
+        )
+        return result.scalar_one_or_none()
+
     async def process_topup(
         self,
         telegram_id: int,
