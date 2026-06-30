@@ -140,7 +140,7 @@ class UserRepository:
 
     async def get_by_referral_code(self, code: str) -> Optional[User]:
         result = await self.session.execute(
-            select(User).where(User.referral_code == code)
+            select(User).where(User.referral_code == code, User.deleted_at.is_(None))
         )
         return result.scalar_one_or_none()
 
@@ -153,7 +153,7 @@ class UserRepository:
         allow_negative: bool = True,
     ) -> Optional[User]:
         result = await self.session.execute(
-            select(User).where(User.telegram_id == telegram_id)
+            select(User).where(User.telegram_id == telegram_id, User.deleted_at.is_(None))
         )
         user = result.scalar_one_or_none()
         if user is None:
@@ -168,7 +168,9 @@ class UserRepository:
 
     async def set_balance(self, telegram_id: int, balance: int) -> Optional[User]:
         await self.session.execute(
-            update(User).where(User.telegram_id == telegram_id).values(balance=balance)
+            update(User)
+            .where(User.telegram_id == telegram_id, User.deleted_at.is_(None))
+            .values(balance=balance)
         )
         await self.session.commit()
         return await self.get_by_telegram_id(telegram_id)
@@ -176,7 +178,7 @@ class UserRepository:
     async def set_banned(self, telegram_id: int, is_banned: bool) -> Optional[User]:
         await self.session.execute(
             update(User)
-            .where(User.telegram_id == telegram_id)
+            .where(User.telegram_id == telegram_id, User.deleted_at.is_(None))
             .values(is_banned=is_banned)
         )
         await self.session.commit()
@@ -198,27 +200,45 @@ class UserRepository:
         pattern = f"%{query}%"
         result = await self.session.execute(
             select(User).where(
+                User.deleted_at.is_(None),
                 (User.username.ilike(pattern))
                 | (User.first_name.ilike(pattern))
-                | (User.telegram_id == int(query) if query.isdigit() else False)
+                | (User.telegram_id == int(query) if query.isdigit() else False),
             )
         )
         return result.scalars().all()
 
     async def count_all(self) -> int:
-        result = await self.session.execute(select(func.count(User.id)))
+        result = await self.session.execute(
+            select(func.count(User.id)).where(User.deleted_at.is_(None))
+        )
+        return result.scalar_one()
+
+    async def count_created_since(self, since: datetime.datetime) -> int:
+        result = await self.session.execute(
+            select(func.count(User.id)).where(
+                User.created_at >= since,
+                User.deleted_at.is_(None),
+            )
+        )
         return result.scalar_one()
 
     async def count_active(self) -> int:
         seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
         result = await self.session.execute(
-            select(func.count(User.id)).where(User.last_active >= seven_days_ago)
+            select(func.count(User.id)).where(
+                User.last_active >= seven_days_ago,
+                User.deleted_at.is_(None),
+            )
         )
         return result.scalar_one()
 
     async def count_banned(self) -> int:
         result = await self.session.execute(
-            select(func.count(User.id)).where(User.is_banned.is_(True))
+            select(func.count(User.id)).where(
+                User.is_banned.is_(True),
+                User.deleted_at.is_(None),
+            )
         )
         return result.scalar_one()
 
@@ -248,12 +268,20 @@ class UserRepository:
         if segment == "new_users":
             since = datetime.datetime.utcnow() - datetime.timedelta(days=7)
             result = await self.session.execute(
-                select(User.telegram_id).where(User.created_at >= since, User.is_banned.is_(False))
+                select(User.telegram_id).where(
+                    User.created_at >= since,
+                    User.is_banned.is_(False),
+                    User.deleted_at.is_(None),
+                )
             )
             return result.scalars().all()
         if segment == "trial_unused":
             result = await self.session.execute(
-                select(User.telegram_id).where(User.trial_used.is_(False), User.is_banned.is_(False))
+                select(User.telegram_id).where(
+                    User.trial_used.is_(False),
+                    User.is_banned.is_(False),
+                    User.deleted_at.is_(None),
+                )
             )
             return result.scalars().all()
         if segment == "inactive":
@@ -262,13 +290,18 @@ class UserRepository:
                 select(User.telegram_id).where(
                     (User.last_active.is_(None) | (User.last_active < since)),
                     User.is_banned.is_(False),
+                    User.deleted_at.is_(None),
                 )
             )
             return result.scalars().all()
         if segment.startswith("lang:"):
             lang = segment.split(":", 1)[1]
             result = await self.session.execute(
-                select(User.telegram_id).where(User.language_code == lang, User.is_banned.is_(False))
+                select(User.telegram_id).where(
+                    User.language_code == lang,
+                    User.is_banned.is_(False),
+                    User.deleted_at.is_(None),
+                )
             )
             return result.scalars().all()
         return list(await self.get_all_telegram_ids())
