@@ -18,7 +18,6 @@ from loguru import logger
 from bot.config import settings
 from bot.database.session import async_session_factory
 from bot.database.repositories.server_region import ServerRegionRepository
-from bot.database.repositories.user import UserRepository
 from bot.keyboards.user_kb import (
     back_to_menu_kb,
     buy_plan_kb,
@@ -218,37 +217,24 @@ async def msg_enter_promo(message: Message, state: FSMContext) -> None:
 async def cb_start_trial(call: CallbackQuery, bot: Bot) -> None:
     await call.answer()
     async with async_session_factory() as session:
-        user_repo = UserRepository(session)
-        db_user = await user_repo.get_by_telegram_id(call.from_user.id)
-        if db_user is None:
-            return
-        if db_user.trial_used:
-            if call.message:
-                await call.message.edit_text(
-                    "❌ Trial уже был использован ранее.",
-                    parse_mode="HTML",
-                    reply_markup=back_to_menu_kb(),
-                )
-            return
-        # Mark trial as used up-front so concurrent clicks can't double-activate.
-        db_user.trial_used = True
-        await session.commit()
-
         xui = XUIClient()
         sub = None
         try:
             sub_service = SubscriptionService(session, xui)
-            sub = await sub_service.purchase(
+            sub = await sub_service.activate_trial(
                 call.from_user.id,
-                "1m",
                 idempotency_key=f"trial:{call.from_user.id}",
-                is_trial=True,
             )
+        except UserFacingError as e:
+            if call.message:
+                await call.message.edit_text(
+                    e.user_message,
+                    parse_mode="HTML",
+                    reply_markup=back_to_menu_kb(),
+                )
+            return
         except Exception as e:
             logger.error("Trial activation failed: {}", e)
-            # Roll back the trial_used flag so user can retry.
-            db_user.trial_used = False
-            await session.commit()
             if call.message:
                 await call.message.edit_text(
                     "❌ Не удалось запустить trial. Попробуйте позже.",
@@ -260,13 +246,17 @@ async def cb_start_trial(call: CallbackQuery, bot: Bot) -> None:
             await xui.close()
 
         if sub is not None:
+            balance = await PaymentService(session).get_user_balance_or_default(
+                call.from_user.id,
+                0,
+            )
             notif = NotificationService(bot, session)
             await notif.send(
                 call.from_user.id,
                 "purchase_success",
                 expires_at=fmt_date(sub.expires_at),
                 price="0",
-                balance=str(db_user.balance),
+                balance=str(balance),
             )
 
     if call.message:

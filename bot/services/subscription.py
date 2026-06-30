@@ -399,6 +399,42 @@ class SubscriptionService:
         )
         return sub
 
+    async def activate_trial(
+        self,
+        telegram_id: int,
+        *,
+        plan_type: str = "1m",
+        idempotency_key: str | None = None,
+    ) -> Optional[Subscription]:
+        user = await self.user_repo.get_by_telegram_id(telegram_id)
+        if user is None:
+            raise UserFacingError(
+                "❌ Профиль не найден. Отправьте /start и попробуйте снова.",
+                log_detail="user not found for trial",
+            )
+        if user.trial_used:
+            raise UserFacingError(
+                "❌ Trial уже был использован ранее.",
+                log_detail="trial already used",
+            )
+
+        # Mark up-front so concurrent clicks cannot double-activate; roll back
+        # only if provisioning/payment persistence fails.
+        user.trial_used = True
+        await self.session.commit()
+
+        try:
+            return await self.purchase(
+                telegram_id,
+                plan_type,
+                idempotency_key=idempotency_key or f"trial:{telegram_id}",
+                is_trial=True,
+            )
+        except Exception:
+            user.trial_used = False
+            await self.session.commit()
+            raise
+
     async def renew(
         self,
         telegram_id: int,
