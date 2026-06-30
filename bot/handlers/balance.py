@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, Message
 from loguru import logger
 
 from bot.keyboards.user_kb import back_to_menu_kb, payment_method_kb, topup_kb
-from bot.utils.validators import validate_topup_amount
+from bot.services.balance import BalanceService
 
 router = Router(name="balance")
 
@@ -73,7 +73,7 @@ async def cb_topup_amount(call: CallbackQuery, bot: Bot, state: FSMContext) -> N
             )
         return
 
-    amount = validate_topup_amount(amount_str)
+    amount = BalanceService.parse_topup_amount(amount_str)
     if amount is None:
         return
 
@@ -82,7 +82,7 @@ async def cb_topup_amount(call: CallbackQuery, bot: Bot, state: FSMContext) -> N
 
 @router.message(TopupStates.waiting_custom_amount)
 async def msg_custom_amount(message: Message, bot: Bot, state: FSMContext) -> None:
-    amount = validate_topup_amount(message.text or "")
+    amount = BalanceService.parse_topup_amount(message.text or "")
     if amount is None:
         await message.answer(
             "\u274c Некорректная сумма. Введите число от 1 до 100000.",
@@ -91,14 +91,15 @@ async def msg_custom_amount(message: Message, bot: Bot, state: FSMContext) -> No
         return
 
     await state.clear()
+    invoice = BalanceService.build_topup_invoice(amount)
     try:
         await bot.send_invoice(
             chat_id=message.chat.id,
-            title="Пополнение баланса",
-            description=f"Пополнение баланса на {amount} Stars",
-            payload=f"topup:v1:{amount}",
-            currency="XTR",
-            prices=[{"label": "Stars", "amount": amount}],
+            title=invoice.title,
+            description=invoice.description,
+            payload=invoice.payload,
+            currency=invoice.currency,
+            prices=invoice.prices,
         )
     except Exception as e:
         logger.error("Failed to send invoice: {}", e)
@@ -111,13 +112,14 @@ async def msg_custom_amount(message: Message, bot: Bot, state: FSMContext) -> No
 async def _send_invoice(call: CallbackQuery, bot: Bot, amount: int) -> None:
     try:
         chat_id = call.message.chat.id if call.message else call.from_user.id
+        invoice = BalanceService.build_topup_invoice(amount)
         await bot.send_invoice(
             chat_id=chat_id,
-            title="Пополнение баланса",
-            description=f"Пополнение баланса на {amount} Stars",
-            payload=f"topup:v1:{amount}",
-            currency="XTR",
-            prices=[{"label": "Stars", "amount": amount}],
+            title=invoice.title,
+            description=invoice.description,
+            payload=invoice.payload,
+            currency=invoice.currency,
+            prices=invoice.prices,
         )
     except Exception as e:
         logger.error("Failed to send invoice: {}", e)
