@@ -18,6 +18,7 @@ from bot.keyboards.user_kb import (
 from bot.keyboards.admin_kb import admin_main_kb
 from bot.middlewares.admin_check import is_admin
 from bot.services.notification import NotificationService
+from bot.services.profile import UserProfileService
 from bot.services.start import StartService
 
 router = Router(name="start")
@@ -142,25 +143,24 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
         user_repo = UserRepository(session)
 
         if callback_data == "u:profile":
-            db_user = await user_repo.get_by_telegram_id(user.id)
-            if db_user is None:
+            profile = await UserProfileService(session).get_profile(user.id)
+            if profile is None:
                 await message.answer(
                     "\u274c Профиль не найден. Отправьте /start",
                     parse_mode="HTML",
                 )
                 return
-            referral_count = await user_repo.get_referral_count(user.id)
             bot_info = await bot.get_me()
             bot_username = bot_info.username or ""
             msg = (
                 "\U0001f48e <b>Мой профиль</b>\n\n"
-                f"\U0001f194 ID: {code(db_user.telegram_id)}\n"
-                f"\U0001f464 Username: @{esc(db_user.username or '—')}\n"
-                f"\U0001f4b0 Баланс: <b>{fmt_rub(db_user.balance)}</b>\n"
-                f"\U0001f4c5 Дата регистрации: {fmt_date(db_user.created_at)}\n"
-                f"\U0001f465 Рефералов: {referral_count}\n\n"
+                f"\U0001f194 ID: {code(profile.telegram_id)}\n"
+                f"\U0001f464 Username: @{esc(profile.username or '—')}\n"
+                f"\U0001f4b0 Баланс: <b>{fmt_rub(profile.balance)}</b>\n"
+                f"\U0001f4c5 Дата регистрации: {fmt_date(profile.created_at)}\n"
+                f"\U0001f465 Рефералов: {profile.referral_count}\n\n"
                 f"\U0001f517 Реферальная ссылка:\n"
-                f"{code(f'https://t.me/{bot_username}?start=ref_{db_user.referral_code}')}"
+                f"{code(f'https://t.me/{bot_username}?start=ref_{profile.referral_code}')}"
             )
             await message.answer(msg, parse_mode="HTML", reply_markup=back_to_menu_kb())
 
