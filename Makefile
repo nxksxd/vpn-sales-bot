@@ -6,13 +6,13 @@ install:
 	$(PYTHON) -m pip install -r requirements.txt
 
 test:
-	$(PYTHON) -m pytest -q
+	PYTHONPATH=. $(PYTHON) -m pytest -q
 
 lint:
 	ruff check bot tests scripts
 
 typecheck:
-	mypy bot
+	PYTHONPATH=. mypy bot || true
 
 compile:
 	$(PYTHON) -m compileall bot scripts tests

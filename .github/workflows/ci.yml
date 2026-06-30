@@ -7,6 +7,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,7 +27,7 @@ jobs:
         # while still printing mypy diagnostics for future cleanup.
         run: mypy bot || true
       - name: Run tests
-        run: PYTHONPATH=. pytest -q
+        run: pytest -q
       - name: Validate migrations directory
         run: test -d migrations/versions
       - name: Build Docker image
