@@ -37,19 +37,22 @@ class AdminCatalogService:
         self.promo_repo = PromoCodeRepository(session)
         self.region_repo = ServerRegionRepository(session)
 
+    async def get_regions(self) -> list[AdminCatalogRegionView]:
+        regions = await self.region_repo.get_active_regions()
+        return [
+            AdminCatalogRegionView(
+                code=region.code,
+                label=region.label,
+                inbound_id=region.inbound_id,
+                server_address=region.server_address,
+            )
+            for region in regions
+        ]
+
     async def get_catalog(self) -> AdminCatalogView:
         promos = await self.promo_repo.get_all_active()
-        regions = await self.region_repo.get_active_regions()
         return AdminCatalogView(
-            regions=[
-                AdminCatalogRegionView(
-                    code=region.code,
-                    label=region.label,
-                    inbound_id=region.inbound_id,
-                    server_address=region.server_address,
-                )
-                for region in regions
-            ],
+            regions=await self.get_regions(),
             promos=[
                 AdminCatalogPromoView(
                     code=promo.code,

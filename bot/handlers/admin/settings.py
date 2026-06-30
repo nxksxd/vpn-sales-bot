@@ -16,8 +16,8 @@ from loguru import logger
 from bot.config import settings, BASE_DIR
 from bot.keyboards.admin_kb import admin_main_kb, admin_xui_settings_kb
 from bot.middlewares.admin_check import admin_only, is_admin
-from bot.database.repositories.server_region import ServerRegionRepository
 from bot.domain_enums import AuditAction
+from bot.services.admin_catalog import AdminCatalogService
 from bot.services.audit_log import AuditLogService
 from bot.services.xui_client import XUIClient
 from bot.utils.formatters import code
@@ -252,8 +252,7 @@ async def receive_xui_value(message: Message, state: FSMContext) -> None:
 async def cb_regions_settings(call: CallbackQuery) -> None:
     await call.answer()
     async with __import__("bot.database.session", fromlist=["async_session_factory"]).async_session_factory() as session:
-        repo = ServerRegionRepository(session)
-        regions = await repo.get_active_regions()
+        regions = await AdminCatalogService(session).get_regions()
 
     if not regions:
         text = "🌍 <b>Регионы серверов</b>\n\nЗаписей пока нет."
