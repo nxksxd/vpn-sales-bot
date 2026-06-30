@@ -64,27 +64,10 @@ async def cb_regenerate_key(call: CallbackQuery) -> None:
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        active = await AdminKeyService(session).get_active_subscription(tid)
-
-        if active is None:
-            if call.message:
-                await call.message.edit_text(
-                    f"\u274c У пользователя {code(tid)} нет активной подписки.",
-                    parse_mode="HTML",
-                    reply_markup=admin_user_card_kb(tid),
-                )
-            return
-
-        xui = XUIClient()
         try:
-            sub_service = SubscriptionService(session, xui)
-            new_link = await sub_service.regenerate_key(active)
-            audit = AuditLogService(session)
-            await audit.log(
-                call.from_user.id,
-                AuditAction.KEY_REGENERATED,
-                target_user_id=tid,
-                details="regenerated active key",
+            found, new_link = await AdminKeyService(session).regenerate_key(
+                admin_id=call.from_user.id,
+                telegram_id=tid,
             )
         except ValueError as e:
             if call.message:
@@ -103,8 +86,15 @@ async def cb_regenerate_key(call: CallbackQuery) -> None:
                     reply_markup=admin_key_actions_kb(tid),
                 )
             return
-        finally:
-            await xui.close()
+
+        if not found:
+            if call.message:
+                await call.message.edit_text(
+                    f"\u274c У пользователя {code(tid)} нет активной подписки.",
+                    parse_mode="HTML",
+                    reply_markup=admin_user_card_kb(tid),
+                )
+            return
 
     if call.message:
         await call.message.edit_text(

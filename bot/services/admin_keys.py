@@ -118,6 +118,24 @@ class AdminKeyService:
         )
         return True
 
+    async def regenerate_key(self, *, admin_id: int, telegram_id: int) -> tuple[bool, str | None]:
+        active = await self.sub_repo.get_active_by_user(telegram_id)
+        if active is None:
+            return False, None
+
+        xui = XUIClient()
+        try:
+            new_link = await SubscriptionService(self.sub_repo.session, xui).regenerate_key(active)
+            await AuditLogService(self.sub_repo.session).log(
+                admin_telegram_id=admin_id,
+                action=AuditAction.KEY_REGENERATED,
+                target_user_id=telegram_id,
+                details="regenerated active key",
+            )
+            return True, new_link
+        finally:
+            await xui.close()
+
     async def get_traffic_reset_target(
         self,
         telegram_id: int,
