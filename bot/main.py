@@ -18,6 +18,7 @@ from loguru import logger
 from bot.config import settings
 from bot.database.session import close_db, init_db
 from bot.handlers import balance as h_balance
+from bot.handlers import fallback as h_fallback
 from bot.handlers import keys as h_keys
 from bot.handlers import payments as h_payments
 from bot.handlers import profile as h_profile
@@ -87,6 +88,7 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(h_admin_catalog.router)
     dp.include_router(h_admin_promo.router)
     dp.include_router(h_yookassa_payment.router)
+    dp.include_router(h_fallback.router)
 
     return dp
 

@@ -132,6 +132,17 @@ def confirm_purchase_kb(
     )
 
 
+
+def payment_method_kb() -> InlineKeyboardMarkup:
+    """Keyboard for choosing top-up payment method."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⭐ Оплата звёздами", callback_data="topup:stars")],
+            [InlineKeyboardButton(text="💳 Оплата через ЮKassa", callback_data="topup:yookassa")],
+            [InlineKeyboardButton(text="« Главное меню", callback_data="u:menu")],
+        ]
+    )
+
 def topup_kb() -> InlineKeyboardMarkup:
     amounts = [50, 100, 250, 500]
     rows = []

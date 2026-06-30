@@ -5,10 +5,10 @@ from __future__ import annotations
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, Message
 from loguru import logger
 
-from bot.keyboards.user_kb import back_to_menu_kb, topup_kb
+from bot.keyboards.user_kb import back_to_menu_kb, payment_method_kb, topup_kb
 from bot.utils.validators import validate_topup_amount
 
 router = Router(name="balance")
@@ -17,15 +17,6 @@ router = Router(name="balance")
 class TopupStates(StatesGroup):
     waiting_custom_amount = State()
 
-
-def _payment_method_kb() -> InlineKeyboardMarkup:
-    """Keyboard for choosing payment method."""
-    rows = [
-        [InlineKeyboardButton(text="⭐ Оплата звёздами", callback_data="topup:stars")],
-        [InlineKeyboardButton(text="💳 Оплата через ЮKassa", callback_data="topup:yookassa")],
-        [InlineKeyboardButton(text="« Главное меню", callback_data="u:menu")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.callback_query(F.data == "u:topup")
@@ -38,11 +29,11 @@ async def cb_topup_menu(call: CallbackQuery) -> None:
     if call.message:
         try:
             await call.message.edit_text(
-                text, parse_mode="HTML", reply_markup=_payment_method_kb()
+                text, parse_mode="HTML", reply_markup=payment_method_kb()
             )
         except Exception:
             await call.message.answer(
-                text, parse_mode="HTML", reply_markup=_payment_method_kb()
+                text, parse_mode="HTML", reply_markup=payment_method_kb()
             )
 
 
@@ -91,7 +82,6 @@ async def cb_topup_amount(call: CallbackQuery, bot: Bot, state: FSMContext) -> N
 
 @router.message(TopupStates.waiting_custom_amount)
 async def msg_custom_amount(message: Message, bot: Bot, state: FSMContext) -> None:
-    await state.clear()
     amount = validate_topup_amount(message.text or "")
     if amount is None:
         await message.answer(
@@ -100,6 +90,7 @@ async def msg_custom_amount(message: Message, bot: Bot, state: FSMContext) -> No
         )
         return
 
+    await state.clear()
     try:
         await bot.send_invoice(
             chat_id=message.chat.id,

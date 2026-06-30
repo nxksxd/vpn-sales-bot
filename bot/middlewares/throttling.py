@@ -15,15 +15,39 @@ from bot.config import settings
 class ThrottlingMiddleware(BaseMiddleware):
     PER_MINUTE: int = settings.rate_limit_per_minute
     COOLDOWN_SECONDS: int = 60
+    GC_INTERVAL_SECONDS: int = 300
 
     def __init__(self) -> None:
         self._events: Dict[int, Deque[float]] = defaultdict(deque)
         self._cooldown_until: Dict[int, float] = {}
+        self._last_gc: float = 0.0
+
+    def _gc(self, now: float) -> None:
+        """Drop idle users so long-running bot processes do not leak IDs forever."""
+        if now - self._last_gc < self.GC_INTERVAL_SECONDS:
+            return
+
+        cutoff = now - 60.0
+        for user_id, events in list(self._events.items()):
+            while events and events[0] < cutoff:
+                events.popleft()
+            if not events:
+                self._events.pop(user_id, None)
+
+        for user_id, cooldown_end in list(self._cooldown_until.items()):
+            if cooldown_end <= now:
+                self._cooldown_until.pop(user_id, None)
+
+        self._last_gc = now
 
     def _check(self, user_id: int) -> Tuple[bool, float]:
         now = time.monotonic()
+        self._gc(now)
 
         cooldown_end = self._cooldown_until.get(user_id, 0.0)
+        if cooldown_end and now >= cooldown_end:
+            self._cooldown_until.pop(user_id, None)
+            cooldown_end = 0.0
         if now < cooldown_end:
             return False, cooldown_end - now
 

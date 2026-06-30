@@ -24,9 +24,9 @@ def _make_db():
 @pytest.mark.asyncio
 async def test_payment_method_selection_keyboard():
     """Test that payment method keyboard always shows both options."""
-    from bot.handlers.balance import _payment_method_kb
+    from bot.keyboards.user_kb import payment_method_kb
 
-    kb = _payment_method_kb()
+    kb = payment_method_kb()
     buttons = [btn.text for row in kb.inline_keyboard for btn in row]
     assert "⭐ Оплата звёздами" in buttons
     assert "💳 Оплата через ЮKassa" in buttons

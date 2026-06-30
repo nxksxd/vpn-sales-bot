@@ -182,7 +182,6 @@ async def cb_enter_promo(call: CallbackQuery, state: FSMContext) -> None:
 @router.message(PurchaseStates.waiting_promo)
 async def msg_enter_promo(message: Message, state: FSMContext) -> None:
     promo_code = (message.text or "").strip().upper()
-    await state.clear()
     async with async_session_factory() as session:
         uc = SubscriptionUseCases(session, XUIClient())
         promo = await uc.resolve_promo(promo_code)
@@ -193,6 +192,7 @@ async def msg_enter_promo(message: Message, state: FSMContext) -> None:
             reply_markup=back_to_menu_kb(),
         )
         return
+    await state.clear()
     discount = promo.discount_percent if promo is not None else settings.promo_codes[promo_code].get("discount_percent", 0)
     # Send user back to the product picker, preserving the promo code in
     # subsequent callbacks so it's automatically applied to checkout.
@@ -288,6 +288,8 @@ async def cb_subscriptions(call: CallbackQuery) -> None:
     async with async_session_factory() as session:
         repo = SubscriptionRepository(session)
         active = await repo.get_active_by_user(user.id)
+        user_repo = UserRepository(session)
+        db_user = await user_repo.get_by_telegram_id(user.id)
 
     if active:
         remaining = days_until(active.expires_at)
@@ -305,7 +307,7 @@ async def cb_subscriptions(call: CallbackQuery) -> None:
             "🔑 <b>Мои подписки</b>\n\n"
             "❌ У вас нет активной подписки.\n"
             "Нажмите «Купить подписку» чтобы начать.\n\n"
-            f"🎁 Trial: <b>{'недоступен' if getattr(user, 'trial_used', False) else 'доступен'}</b>"
+            f"🎁 Trial: <b>{'недоступен' if db_user and db_user.trial_used else 'доступен'}</b>"
         )
         kb = subscription_kb(has_active=False)
 

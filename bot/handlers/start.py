@@ -10,9 +10,9 @@ from aiogram.types import CallbackQuery, Message
 from bot.config import settings
 from bot.database.session import async_session_factory
 from bot.database.repositories.user import UserRepository
-from bot.handlers.balance import _payment_method_kb
 from bot.keyboards.user_kb import (
     MENU_BUTTONS_MAP,
+    payment_method_kb,
     persistent_menu_kb,
 )
 from bot.keyboards.admin_kb import admin_main_kb
@@ -105,7 +105,8 @@ async def cmd_start(message: Message, bot: Bot) -> None:
 
 
 @router.callback_query(F.data == "u:menu")
-async def cb_main_menu(call: CallbackQuery) -> None:
+async def cb_main_menu(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
     await call.answer()
     user = call.from_user
     if user and is_admin(user.id):
@@ -232,7 +233,7 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
                 "\U0001f4b0 <b>Пополнение баланса</b>\n\n"
                 "Выберите способ оплаты:",
                 parse_mode="HTML",
-                reply_markup=_payment_method_kb(),
+                reply_markup=payment_method_kb(),
             )
 
         elif callback_data == "sub:show_key":

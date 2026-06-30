@@ -83,7 +83,6 @@ async def cb_yookassa_amount(call: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(YooKassaTopupStates.waiting_amount)
 async def msg_yookassa_custom_amount(message: Message, state: FSMContext) -> None:
-    await state.clear()
     text = (message.text or "").strip()
     try:
         amount = int(text)
@@ -101,6 +100,7 @@ async def msg_yookassa_custom_amount(message: Message, state: FSMContext) -> Non
         )
         return
 
+    await state.clear()
     await _create_yookassa_payment_msg(message, amount)
 
 
