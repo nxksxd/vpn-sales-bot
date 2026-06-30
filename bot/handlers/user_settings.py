@@ -6,8 +6,8 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from bot.database.session import async_session_factory
-from bot.database.repositories.user import UserRepository
 from bot.keyboards.user_kb import user_settings_kb
+from bot.services.user_settings import UserSettingsService
 
 router = Router(name="user_settings")
 
@@ -16,10 +16,8 @@ router = Router(name="user_settings")
 async def cb_user_settings(call: CallbackQuery) -> None:
     await call.answer()
     async with async_session_factory() as session:
-        repo = UserRepository(session)
-        db_user = await repo.get_by_telegram_id(call.from_user.id)
-
-    auto_renew = db_user.auto_renew if db_user else True
+        settings_service = UserSettingsService(session)
+        auto_renew = await settings_service.get_auto_renew(call.from_user.id)
     text = (
         "\u2699\ufe0f <b>Настройки</b>\n\n"
         "Управление вашим аккаунтом:"
@@ -39,13 +37,10 @@ async def cb_user_settings(call: CallbackQuery) -> None:
 async def cb_toggle_autorenew(call: CallbackQuery) -> None:
     await call.answer()
     async with async_session_factory() as session:
-        repo = UserRepository(session)
-        db_user = await repo.get_by_telegram_id(call.from_user.id)
-        if db_user is None:
+        settings_service = UserSettingsService(session)
+        new_value = await settings_service.toggle_auto_renew(call.from_user.id)
+        if new_value is None:
             return
-
-        new_value = not db_user.auto_renew
-        await repo.set_auto_renew(call.from_user.id, new_value)
 
     status = "\u2705 включено" if new_value else "\u274c выключено"
     text = (
