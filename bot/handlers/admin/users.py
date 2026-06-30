@@ -11,10 +11,6 @@ from aiogram.types import CallbackQuery, Message
 from loguru import logger
 
 from bot.database.session import async_session_factory
-from bot.database.repositories.subscription import SubscriptionRepository
-from bot.database.repositories.transaction import TransactionRepository
-from bot.database.repositories.user import UserRepository
-from bot.database.repositories.vpn_key import VpnKeyRepository
 from bot.keyboards.admin_kb import (
     admin_user_card_kb,
     admin_users_kb,
@@ -22,6 +18,7 @@ from bot.keyboards.admin_kb import (
 )
 from bot.middlewares.admin_check import admin_only
 from bot.services.admin_use_cases import AdminUseCases
+from bot.services.admin_users import AdminUserService
 from bot.utils.formatters import code, esc, fmt_date, fmt_plan, fmt_rub
 from bot.utils.validators import validate_balance_change
 
@@ -77,8 +74,7 @@ async def msg_user_search(message: Message, state: FSMContext) -> None:
     await state.clear()
 
     async with async_session_factory() as session:
-        repo = UserRepository(session)
-        users = await repo.search_users(query)
+        users = await AdminUserService(session).search_users(query)
 
     if not users:
         await message.answer(
@@ -113,13 +109,14 @@ async def cb_user_list(call: CallbackQuery) -> None:
     page = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        repo = UserRepository(session)
-        total = await repo.count_all()
-        users = await repo.get_all_users(offset=page * PAGE_SIZE, limit=PAGE_SIZE)
+        user_page = await AdminUserService(session).get_user_list_page(
+            offset=page * PAGE_SIZE,
+            limit=PAGE_SIZE,
+        )
 
-    total_pages = max(1, math.ceil(total / PAGE_SIZE))
-    lines = [f"\U0001f4cb <b>Пользователи</b> ({total})\n"]
-    for u in users:
+    total_pages = max(1, math.ceil(user_page.total / PAGE_SIZE))
+    lines = [f"\U0001f4cb <b>Пользователи</b> ({user_page.total})\n"]
+    for u in user_page.users:
         ban_mark = "\U0001f6ab" if u.is_banned else ""
         lines.append(
             f"\u2022 {code(u.telegram_id)} | @{esc(u.username or '—')} | "
@@ -228,14 +225,13 @@ async def cb_toggle_ban(call: CallbackQuery) -> None:
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        repo = UserRepository(session)
-        user = await repo.get_by_telegram_id(tid)
-        if user is None:
+        current_status = await AdminUserService(session).get_user_ban_status(tid)
+        if current_status is None:
             if call.message:
                 await call.message.answer("❌ Пользователь не найден.")
             return
 
-        new_status = not user.is_banned
+        new_status = not current_status
         admin_uc = AdminUseCases(session)
         await admin_uc.toggle_ban(
             admin_id=call.from_user.id,
@@ -315,51 +311,42 @@ async def msg_send_user_message(message: Message, bot: Bot, state: FSMContext) -
 
 async def _build_user_card(telegram_id: int) -> str:
     async with async_session_factory() as session:
-        user_repo = UserRepository(session)
-        user = await user_repo.get_by_telegram_id(telegram_id)
-        if user is None:
+        user_card = await AdminUserService(session).get_user_card(telegram_id)
+        if user_card is None:
             return f"\u274c Пользователь {code(telegram_id)} не найден."
 
-        sub_repo = SubscriptionRepository(session)
-        active_sub = await sub_repo.get_active_by_user(telegram_id)
-        tx_repo = TransactionRepository(session)
-        recent_txs = await tx_repo.get_user_history(telegram_id, limit=5)
-
-        key_repo = VpnKeyRepository(session)
-        keys = await key_repo.get_user_keys(telegram_id)
-
-    ban_status = "\U0001f6ab Заблокирован" if user.is_banned else "\u2705 Активен"
+    ban_status = "\U0001f6ab Заблокирован" if user_card.is_banned else "\u2705 Активен"
 
     lines = [
         "\U0001f464 <b>Карточка пользователя</b>\n",
-        f"\U0001f194 ID: {code(user.telegram_id)}",
-        f"\U0001f464 Username: @{esc(user.username or '—')}",
-        f"\U0001f4dd Имя: {esc(user.first_name or '—')}",
-        f"\U0001f4b0 Баланс: <b>{fmt_rub(user.balance)}</b>",
+        f"\U0001f194 ID: {code(user_card.telegram_id)}",
+        f"\U0001f464 Username: @{esc(user_card.username or '—')}",
+        f"\U0001f4dd Имя: {esc(user_card.first_name or '—')}",
+        f"\U0001f4b0 Баланс: <b>{fmt_rub(user_card.balance)}</b>",
         f"\U0001f7e2 Статус: {ban_status}",
-        f"\U0001f4c5 Регистрация: {fmt_date(user.created_at)}",
-        f"\U0001f552 Последняя активность: {fmt_date(user.last_active)}",
+        f"\U0001f4c5 Регистрация: {fmt_date(user_card.created_at)}",
+        f"\U0001f552 Последняя активность: {fmt_date(user_card.last_active)}",
     ]
 
-    if active_sub:
+    if user_card.active_subscription:
         lines.append("\n\U0001f511 <b>Активная подписка:</b>")
-        lines.append(f"  Тариф: {fmt_plan(active_sub.plan_type)}")
-        lines.append(f"  До: {fmt_date(active_sub.expires_at)}")
-        lines.append(f"  UUID: {code(active_sub.xui_client_id or '—')}")
+        lines.append(f"  Тариф: {fmt_plan(user_card.active_subscription.plan_type)}")
+        lines.append(f"  До: {fmt_date(user_card.active_subscription.expires_at)}")
+        lines.append(f"  UUID: {code(user_card.active_subscription.xui_client_id or '—')}")
 
-    if keys:
-        lines.append(f"\n\U0001f511 <b>Ключи ({len(keys)}):</b>")
-        for k in keys[:3]:
-            status = "\u2705" if k.is_active else "\u274c"
-            lines.append(f"  {status} {code(k.xui_client_id[:16])}...")
+    if user_card.keys:
+        lines.append(f"\n\U0001f511 <b>Ключи ({len(user_card.keys)}):</b>")
+        for key_card in user_card.keys[:3]:
+            status = "\u2705" if key_card.is_active else "\u274c"
+            lines.append(f"  {status} {code(key_card.xui_client_id[:16])}...")
 
-    if recent_txs:
+    if user_card.recent_transactions:
         lines.append("\n\U0001f4b3 <b>Последние транзакции:</b>")
-        for tx in recent_txs[:5]:
+        for tx in user_card.recent_transactions[:5]:
             sign = "+" if tx.amount_rub >= 0 else ""
             stars_suffix = f" ({tx.amount_stars}⭐)" if tx.amount_stars is not None else ""
             lines.append(
-                f"  {sign}{tx.amount_rub}₽{stars_suffix} | {tx.type} | {fmt_date(tx.created_at)}"
+                f"  {sign}{tx.amount_rub}₽{stars_suffix} | {tx.tx_type} | {fmt_date(tx.created_at)}"
             )
 
 
