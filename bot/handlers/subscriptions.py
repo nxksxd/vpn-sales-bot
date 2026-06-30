@@ -530,9 +530,10 @@ async def cb_confirm_buy(call: CallbackQuery, bot: Bot) -> None:
                 )
             return
 
-        user_repo = UserRepository(session)
-        db_user = await user_repo.get_by_telegram_id(call.from_user.id)
-        balance = db_user.balance if db_user else 0
+        balance = await PaymentService(session).get_user_balance_or_default(
+            call.from_user.id,
+            0,
+        )
 
         notif = NotificationService(bot, session)
         await notif.send(
@@ -548,10 +549,11 @@ async def cb_confirm_buy(call: CallbackQuery, bot: Bot) -> None:
 async def cb_renew_menu(call: CallbackQuery) -> None:
     await call.answer()
     async with async_session_factory() as session:
-        user_repo = UserRepository(session)
-        db_user = await user_repo.get_by_telegram_id(call.from_user.id)
+        balance = await PaymentService(session).get_user_balance_or_default(
+            call.from_user.id,
+            0,
+        )
 
-    balance = db_user.balance if db_user else 0
     text = (
         "\U0001f504 <b>Продление подписки</b>\n\n"
         f"\U0001f4b0 Ваш баланс: <b>{fmt_rub(balance)}</b>\n\n"
@@ -631,9 +633,10 @@ async def cb_renew_plan(call: CallbackQuery, bot: Bot) -> None:
             await xui.close()
 
         if sub:
-            user_repo = UserRepository(session)
-            db_user = await user_repo.get_by_telegram_id(call.from_user.id)
-            balance = db_user.balance if db_user else 0
+            balance = await PaymentService(session).get_user_balance_or_default(
+                call.from_user.id,
+                0,
+            )
 
             notif = NotificationService(bot, session)
             await notif.send(
