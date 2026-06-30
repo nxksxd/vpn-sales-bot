@@ -51,6 +51,27 @@ class PaymentService:
         )
         return result.scalar_one_or_none()
 
+    async def record_yookassa_pending_topup(
+        self,
+        *,
+        telegram_id: int,
+        amount_rub: int,
+        payment_id: str,
+    ) -> None:
+        """Persist a pending YooKassa top-up event once per payment id."""
+        existing_event = await self.event_repo.get_by_charge_id(payment_id)
+        if existing_event is not None:
+            return
+
+        await self.event_repo.create(
+            user_id=telegram_id,
+            status=PaymentStatus.PENDING,
+            amount_stars=0,
+            amount_rub=amount_rub,
+            charge_id=payment_id,
+            payload=f"yookassa:topup:{amount_rub}",
+        )
+
     async def process_topup(
         self,
         telegram_id: int,

@@ -221,22 +221,15 @@ async def _do_create_payment(telegram_id: int, amount_rub: int) -> tuple[str, st
         return None
 
     # Save pending payment event
-    from bot.database.repositories.payment_event import PaymentEventRepository
     from bot.database.session import async_session_factory
-    from bot.domain_enums import PaymentStatus
+    from bot.services.payment import PaymentService
 
     async with async_session_factory() as session:
-        repo = PaymentEventRepository(session)
-        existing_event = await repo.get_by_charge_id(payment_id)
-        if existing_event is None:
-            await repo.create(
-                user_id=telegram_id,
-                status=PaymentStatus.PENDING,
-                amount_stars=0,
-                amount_rub=amount_rub,
-                charge_id=payment_id,
-                payload=f"yookassa:topup:{amount_rub}",
-            )
+        await PaymentService(session).record_yookassa_pending_topup(
+            telegram_id=telegram_id,
+            amount_rub=amount_rub,
+            payment_id=payment_id,
+        )
 
     logger.info(
         "YooKassa payment created: user={} amount={} payment_id={}",
