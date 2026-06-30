@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.database.repositories.subscription import SubscriptionRepository
+from bot.database.repositories.user import UserRepository
 
 
 @dataclass(frozen=True)
@@ -26,9 +27,24 @@ class ActiveSubscriptionView:
         return not self.sub_id
 
 
+@dataclass(frozen=True)
+class SubscriptionMenuView:
+    active: ActiveSubscriptionView | None
+    trial_used: bool
+
+
+@dataclass(frozen=True)
+class SubscriptionHistoryItemView:
+    plan_type: str
+    status: str
+    starts_at: datetime.datetime
+    expires_at: datetime.datetime
+
+
 class SubscriptionViewService:
     def __init__(self, session: AsyncSession) -> None:
         self.sub_repo = SubscriptionRepository(session)
+        self.user_repo = UserRepository(session)
 
     async def get_active_subscription(
         self, telegram_id: int
@@ -47,3 +63,27 @@ class SubscriptionViewService:
             subscription_url=settings.subscription_url(active.sub_id),
             vless_link=active.vless_link,
         )
+
+    async def get_subscription_menu(self, telegram_id: int) -> SubscriptionMenuView:
+        user = await self.user_repo.get_by_telegram_id(telegram_id)
+        return SubscriptionMenuView(
+            active=await self.get_active_subscription(telegram_id),
+            trial_used=bool(user and user.trial_used),
+        )
+
+    async def get_subscription_history(
+        self,
+        telegram_id: int,
+        *,
+        limit: int = 10,
+    ) -> list[SubscriptionHistoryItemView]:
+        subs = await self.sub_repo.get_user_subscriptions(telegram_id, limit=limit)
+        return [
+            SubscriptionHistoryItemView(
+                plan_type=sub.plan_type,
+                status=sub.status,
+                starts_at=sub.starts_at,
+                expires_at=sub.expires_at,
+            )
+            for sub in subs
+        ]

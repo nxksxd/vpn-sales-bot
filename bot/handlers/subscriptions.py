@@ -18,7 +18,6 @@ from loguru import logger
 from bot.config import settings
 from bot.database.session import async_session_factory
 from bot.database.repositories.server_region import ServerRegionRepository
-from bot.database.repositories.subscription import SubscriptionRepository
 from bot.database.repositories.user import UserRepository
 from bot.keyboards.user_kb import (
     back_to_menu_kb,
@@ -32,6 +31,7 @@ from bot.services.notification import NotificationService
 from bot.services.payment import PaymentService
 from bot.services.subscription import SubscriptionService, UserFacingError
 from bot.services.subscription_use_cases import SubscriptionUseCases
+from bot.services.subscription_view import SubscriptionViewService
 from bot.services.xui_client import XUIClient
 from bot.utils.formatters import (
     code,
@@ -287,11 +287,9 @@ async def cb_subscriptions(call: CallbackQuery) -> None:
         return
 
     async with async_session_factory() as session:
-        repo = SubscriptionRepository(session)
-        active = await repo.get_active_by_user(user.id)
-        user_repo = UserRepository(session)
-        db_user = await user_repo.get_by_telegram_id(user.id)
+        menu = await SubscriptionViewService(session).get_subscription_menu(user.id)
 
+    active = menu.active
     if active:
         remaining = days_until(active.expires_at)
         text = (
@@ -302,13 +300,13 @@ async def cb_subscriptions(call: CallbackQuery) -> None:
             f"\u23f3 Осталось: <b>{pluralize_days(remaining)}</b>\n"
             f"\U0001f4ca Лимит трафика: {fmt_traffic_limit(active.traffic_limit_gb)}\n"
         )
-        kb = subscription_kb(has_active=True, is_legacy=not active.sub_id)
+        kb = subscription_kb(has_active=True, is_legacy=active.is_legacy)
     else:
         text = (
             "🔑 <b>Мои подписки</b>\n\n"
             "❌ У вас нет активной подписки.\n"
             "Нажмите «Купить подписку» чтобы начать.\n\n"
-            f"🎁 Trial: <b>{'недоступен' if db_user and db_user.trial_used else 'доступен'}</b>"
+            f"🎁 Trial: <b>{'недоступен' if menu.trial_used else 'доступен'}</b>"
         )
         kb = subscription_kb(has_active=False)
 
@@ -574,8 +572,9 @@ async def cb_renew_menu(call: CallbackQuery) -> None:
 async def cb_quick_renew(call: CallbackQuery, bot: Bot) -> None:
     await call.answer("Продлеваю...")
     async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(call.from_user.id)
+        active = await SubscriptionViewService(session).get_active_subscription(
+            call.from_user.id
+        )
         if active is None:
             if call.message:
                 await call.message.edit_text(
@@ -653,8 +652,10 @@ async def cb_sub_history(call: CallbackQuery) -> None:
     await call.answer()
 
     async with async_session_factory() as session:
-        repo = SubscriptionRepository(session)
-        subs = await repo.get_user_subscriptions(call.from_user.id, limit=10)
+        subs = await SubscriptionViewService(session).get_subscription_history(
+            call.from_user.id,
+            limit=10,
+        )
 
     if not subs:
         text = "\U0001f4dc <b>История подписок</b>\n\nУ вас ещё не было подписок."
