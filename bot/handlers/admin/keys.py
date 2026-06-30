@@ -7,11 +7,10 @@ from aiogram.types import CallbackQuery
 from loguru import logger
 
 from bot.database.session import async_session_factory
-from bot.database.repositories.subscription import SubscriptionRepository
-from bot.database.repositories.vpn_key import VpnKeyRepository
-from bot.domain_enums import AuditAction, SubscriptionStatus
+from bot.domain_enums import AuditAction
 from bot.keyboards.admin_kb import admin_key_actions_kb, admin_user_card_kb
 from bot.middlewares.admin_check import admin_only
+from bot.services.admin_keys import AdminKeyService
 from bot.services.audit_log import AuditLogService
 from bot.services.subscription import SubscriptionService
 from bot.services.xui_client import XUIClient, XuiError
@@ -27,8 +26,7 @@ async def cb_keys_menu(call: CallbackQuery) -> None:
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        key_repo = VpnKeyRepository(session)
-        keys = await key_repo.get_user_keys(tid)
+        keys = await AdminKeyService(session).get_user_key_views(tid)
 
     if not keys:
         text = f"\U0001f511 У пользователя {code(tid)} нет ключей."
@@ -66,8 +64,7 @@ async def cb_regenerate_key(call: CallbackQuery) -> None:
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(tid)
+        active = await AdminKeyService(session).get_active_subscription(tid)
 
         if active is None:
             if call.message:
@@ -125,8 +122,7 @@ async def cb_deactivate_key(call: CallbackQuery) -> None:
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(tid)
+        active = await AdminKeyService(session).get_active_subscription(tid)
         if active is None:
             if call.message:
                 await call.message.answer(
@@ -166,11 +162,8 @@ async def cb_reactivate_key(call: CallbackQuery) -> None:
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(tid)
-        if active is None:
-            subs = await sub_repo.get_user_subscriptions(tid, limit=1)
-            active = subs[0] if subs else None
+        key_service = AdminKeyService(session)
+        active = await key_service.get_latest_subscription(tid)
 
         if active is None:
             if call.message:
@@ -184,7 +177,7 @@ async def cb_reactivate_key(call: CallbackQuery) -> None:
         try:
             sub_service = SubscriptionService(session, xui)
             await sub_service.reactivate_key(active)
-            await sub_repo.set_status(active.id, SubscriptionStatus.ACTIVE)
+            await key_service.mark_subscription_active(active.id)
             audit = AuditLogService(session)
             await audit.log(
                 call.from_user.id,
@@ -212,9 +205,8 @@ async def cb_reset_traffic(call: CallbackQuery) -> None:
     tid = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        key_repo = VpnKeyRepository(session)
-        key = await key_repo.get_active_by_user(tid)
-        if key is None:
+        target = await AdminKeyService(session).get_traffic_reset_target(tid)
+        if target is None:
             if call.message:
                 await call.message.answer(
                     f"\u274c Нет активного ключа у {code(tid)}.",
@@ -224,13 +216,13 @@ async def cb_reset_traffic(call: CallbackQuery) -> None:
 
         xui = XUIClient()
         try:
-            await xui.reset_client_traffic(key.xui_inbound_id, key.email)
+            await xui.reset_client_traffic(target.inbound_id, target.email)
             audit = AuditLogService(session)
             await audit.log(
                 call.from_user.id,
                 AuditAction.TRAFFIC_RESET,
                 target_user_id=tid,
-                details=f"email={key.email}",
+                details=f"email={target.email}",
             )
         except XuiError as e:
             logger.error("Traffic reset failed: {}", e)
