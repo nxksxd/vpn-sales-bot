@@ -14,6 +14,7 @@ from aiogram.types import CallbackQuery, Message
 from loguru import logger
 
 from bot.config import settings, BASE_DIR
+from bot.database.session import async_session_factory
 from bot.keyboards.admin_kb import admin_main_kb, admin_xui_settings_kb
 from bot.middlewares.admin_check import admin_only, is_admin
 from bot.services.admin_catalog import AdminCatalogService
@@ -233,7 +234,7 @@ async def receive_xui_value(message: Message, state: FSMContext) -> None:
         parse_mode="HTML",
         reply_markup=admin_xui_settings_kb(),
     )
-    async with __import__("bot.database.session", fromlist=["async_session_factory"]).async_session_factory() as session:
+    async with async_session_factory() as session:
         await AdminCatalogService(session).log_settings_changed(
             admin_id=message.from_user.id,
             field=field,
@@ -249,7 +250,7 @@ async def receive_xui_value(message: Message, state: FSMContext) -> None:
 @admin_only
 async def cb_regions_settings(call: CallbackQuery) -> None:
     await call.answer()
-    async with __import__("bot.database.session", fromlist=["async_session_factory"]).async_session_factory() as session:
+    async with async_session_factory() as session:
         regions = await AdminCatalogService(session).get_regions()
 
     if not regions:
@@ -382,7 +383,7 @@ async def cb_admin_subscription(call: CallbackQuery) -> None:
     from bot.keyboards.admin_kb import admin_sub_actions_kb
     from bot.utils.formatters import fmt_date, fmt_plan, fmt_status, days_until, pluralize_days
 
-    async with __import__("bot.database.session", fromlist=["async_session_factory"]).async_session_factory() as session:
+    async with async_session_factory() as session:
         active = await AdminKeyService(session).get_active_subscription(tid)
 
     if active is None:
@@ -422,7 +423,6 @@ async def cb_extend_subscription(call: CallbackQuery) -> None:
     days = int(parts[2])
     tid = int(parts[3])
 
-    from bot.database.session import async_session_factory
     from bot.keyboards.admin_kb import admin_sub_actions_kb
     from bot.utils.formatters import pluralize_days
 
@@ -457,7 +457,7 @@ async def cb_cancel_subscription(call: CallbackQuery) -> None:
 
     from bot.keyboards.admin_kb import admin_user_card_kb
 
-    async with __import__("bot.database.session", fromlist=["async_session_factory"]).async_session_factory() as session:
+    async with async_session_factory() as session:
         cancelled = await AdminKeyService(session).cancel_subscription(
             admin_id=call.from_user.id if call.from_user else 0,
             telegram_id=tid,
