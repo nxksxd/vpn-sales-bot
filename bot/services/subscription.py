@@ -28,6 +28,7 @@ from bot.database.repositories.transaction import TransactionRepository
 from bot.database.repositories.user import UserRepository
 from bot.database.repositories.vpn_key import VpnKeyRepository
 from bot.services.xui_client import XUIClient, XuiError, build_vless_link
+from bot.utils import metrics
 from bot.utils.formatters import fmt_rub
 
 
@@ -71,6 +72,7 @@ def _is_client_missing(exc: XuiError) -> bool:
 
 def _xui_error(action: str, exc: XuiError) -> UserFacingError:
     """Wrap a low-level 3x-ui failure into a friendly message."""
+    metrics.inc(metrics.XUI_ERRORS)
     return UserFacingError(
         "⚠️ <b>Не удалось связаться с VPN-сервером</b>\n\n"
         "Сервис временно недоступен. Пожалуйста, попробуйте через пару минут, "
