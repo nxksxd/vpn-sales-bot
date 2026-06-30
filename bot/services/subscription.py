@@ -291,18 +291,17 @@ class SubscriptionService:
             )
             raise _xui_error("add_client", e)
 
-        port = inbound_data.get("port", 443)
-        vless_link = build_vless_link(
-            uuid=client_uuid,
-            server=effective_server,
-            port=port,
-            inbound=inbound_data,
-            email=email,
-            flow=effective_flow,
-        )
-
-
         try:
+            port = inbound_data.get("port", 443)
+            vless_link = build_vless_link(
+                uuid=client_uuid,
+                server=effective_server,
+                port=port,
+                inbound=inbound_data,
+                email=email,
+                flow=effective_flow,
+            )
+
             if plan["rub"] > 0:
                 user_after_debit = await self.user_repo.update_balance(
                     telegram_id,
