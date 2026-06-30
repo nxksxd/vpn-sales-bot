@@ -17,7 +17,8 @@ from bot.keyboards.user_kb import (
 )
 from bot.keyboards.admin_kb import admin_main_kb
 from bot.middlewares.admin_check import is_admin
-from bot.services.referral import ReferralService
+from bot.services.notification import NotificationService
+from bot.services.start import StartService
 
 router = Router(name="start")
 
@@ -47,32 +48,22 @@ async def cmd_start(message: Message, bot: Bot) -> None:
         return
 
     async with async_session_factory() as session:
-        repo = UserRepository(session)
-        created_user = await repo.get_or_create(
+        start_service = StartService(session)
+        start_result = await start_service.process_start(
             telegram_id=user.id,
             username=user.username,
             first_name=user.first_name,
             language_code=user.language_code or "ru",
+            text=message.text or "",
         )
-
-        args = message.text or ""
-        if args.startswith("/start ref_"):
-            ref_code = args.split("ref_", 1)[1].strip()
-            if ref_code:
-                ref_service = ReferralService(session)
-                result = await ref_service.process_referral(user.id, ref_code)
-                if result:
-                    from bot.services.notification import NotificationService
-
-                    referrer = await repo.get_by_referral_code(ref_code)
-                    if referrer:
-                        notif = NotificationService(bot, session)
-                        await notif.send(
-                            referrer.telegram_id,
-                            "referral_bonus",
-                            bonus=str(settings.referral_bonus_rub),
-                            balance=str(referrer.balance),
-                        )
+        if start_result.referral_notification is not None:
+            notif = NotificationService(bot, session)
+            await notif.send(
+                start_result.referral_notification.referrer_telegram_id,
+                "referral_bonus",
+                bonus=str(start_result.referral_notification.bonus_rub),
+                balance=str(start_result.referral_notification.balance),
+            )
 
     if is_admin(user.id):
         # Admin gets persistent keyboard + admin inline panel
@@ -83,20 +74,13 @@ async def cmd_start(message: Message, bot: Bot) -> None:
         )
     else:
         welcome_text = WELCOME_TEXT
-        if not created_user.onboarding_completed:
+        if start_result.show_onboarding:
             welcome_text += (
                 "\n\n🎁 <b>Новым пользователям:</b>\n"
                 "• выберите локацию в разделе «Купить подписку»\n"
                 f"• доступен trial на {settings.trial_days} день(дней)\n"
                 "• можно применить промокод перед покупкой"
             )
-            created_user.onboarding_completed = True
-            async with async_session_factory() as session:
-                repo = UserRepository(session)
-                db_user = await repo.get_by_telegram_id(user.id)
-                if db_user is not None:
-                    db_user.onboarding_completed = True
-                    await session.commit()
         await message.answer(
             welcome_text,
             parse_mode="HTML",
