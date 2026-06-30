@@ -426,56 +426,22 @@ async def cb_extend_subscription(call: CallbackQuery) -> None:
     tid = int(parts[3])
 
     from bot.database.session import async_session_factory
-    from bot.database.repositories.subscription import SubscriptionRepository
     from bot.keyboards.admin_kb import admin_sub_actions_kb
     from bot.utils.formatters import pluralize_days
 
     async with async_session_factory() as session:
-        sub_repo = SubscriptionRepository(session)
-        active = await sub_repo.get_active_by_user(tid)
-        if active is None:
+        extended = await AdminKeyService(session).extend_subscription(
+            admin_id=call.from_user.id if call.from_user else 0,
+            telegram_id=tid,
+            days=days,
+        )
+        if not extended:
             if call.message:
                 await call.message.answer(
                     f"\u274c Нет активной подписки у {code(tid)}.",
                     parse_mode="HTML",
                 )
             return
-
-        xui = XUIClient()
-        try:
-            sub = await sub_repo.extend(active.id, days)
-
-            if sub and sub.xui_client_id:
-                new_expiry_ms = int(sub.expires_at.timestamp() * 1000)
-                from bot.database.repositories.vpn_key import VpnKeyRepository
-                key_repo = VpnKeyRepository(session)
-                key = await key_repo.get_by_client_id(sub.xui_client_id)
-                email = key.email if key else f"user_{tid}"
-                try:
-                    await xui.update_client(
-                        sub.xui_inbound_id or settings.xui_inbound_id,
-                        sub.xui_client_id,
-                        {
-                            "id": sub.xui_client_id,
-                            "email": email,
-                            "enable": True,
-                            "expiryTime": new_expiry_ms,
-                        },
-                    )
-                except Exception as e:
-                    logger.error("Failed to update 3X-UI expiry: {}", e)
-        finally:
-            await xui.close()
-
-        from bot.services.audit_log import AuditLogService
-        from bot.domain_enums import AuditAction
-        await AuditLogService(session).log(
-            admin_telegram_id=call.from_user.id if call.from_user else 0,
-            action=AuditAction.SUBSCRIPTION_EXTENDED,
-            target_user_id=tid,
-            details=f"+{days}d",
-        )
-        await session.commit()
 
     if call.message:
         await call.message.edit_text(
