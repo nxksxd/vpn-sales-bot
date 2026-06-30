@@ -146,14 +146,12 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
     from bot.database.repositories.subscription import SubscriptionRepository
     from bot.keyboards.user_kb import (
         back_to_menu_kb,
-        buy_plan_kb,
         guide_kb,
-        renew_plan_kb,
         subscription_kb,
     )
     from bot.services.referral import ReferralService
     from bot.keyboards.user_kb import user_settings_kb
-    from bot.utils.formatters import code, days_until, esc, fmt_date, fmt_plan, fmt_rub, pluralize_days
+    from bot.utils.formatters import code, days_until, esc, fmt_date, fmt_rub
 
     async with async_session_factory() as session:
         user_repo = UserRepository(session)

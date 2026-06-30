@@ -17,7 +17,6 @@ from loguru import logger
 
 from bot.config import settings
 from bot.database.session import async_session_factory
-from bot.database.repositories.promo_code import PromoCodeRepository
 from bot.database.repositories.server_region import ServerRegionRepository
 from bot.database.repositories.subscription import SubscriptionRepository
 from bot.database.repositories.user import UserRepository

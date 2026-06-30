@@ -4,3 +4,17 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+# Existing codebase still has broad formatting/typing modernization debt.
+# Keep CI focused on correctness-impacting lint until that debt is cleaned up.
+ignore = [
+  "B007",
+  "B904",
+  "E501",
+  "I001",
+  "UP006",
+  "UP007",
+  "UP035",
+  "UP037",
+  "UP041",
+  "UP045",
+]

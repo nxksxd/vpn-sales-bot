@@ -22,7 +22,6 @@ from bot.keyboards.admin_kb import (
 )
 from bot.middlewares.admin_check import admin_only
 from bot.services.admin_use_cases import AdminUseCases
-from bot.services.payment import PaymentService
 from bot.utils.formatters import code, esc, fmt_date, fmt_plan, fmt_rub
 from bot.utils.validators import validate_balance_change
 
