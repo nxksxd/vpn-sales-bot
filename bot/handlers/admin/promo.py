@@ -14,11 +14,9 @@ from aiogram.types import (
     Message,
 )
 
-from bot.database.repositories.promo_code import PromoCodeRepository
 from bot.database.session import async_session_factory
-from bot.domain_enums import AuditAction
 from bot.middlewares.admin_check import admin_only, is_admin
-from bot.services.audit_log import AuditLogService
+from bot.services.admin_promo import AdminPromoService
 from bot.utils.formatters import code, esc
 
 router = Router(name="admin_promo")
@@ -76,8 +74,7 @@ def _promo_card_kb(promo_id: int, is_active: bool) -> InlineKeyboardMarkup:
 async def cb_promo_list(call: CallbackQuery) -> None:
     await call.answer()
     async with async_session_factory() as session:
-        repo = PromoCodeRepository(session)
-        promos = list(await repo.get_all_active())
+        promos = await AdminPromoService(session).list_active()
 
     if not promos:
         text = "🎁 <b>Промокоды</b>\n\nАктивных промокодов нет."
@@ -108,8 +105,7 @@ async def cb_promo_list(call: CallbackQuery) -> None:
 async def cb_promo_list_all(call: CallbackQuery) -> None:
     await call.answer()
     async with async_session_factory() as session:
-        repo = PromoCodeRepository(session)
-        promos = list(await repo.list_all())
+        promos = await AdminPromoService(session).list_all()
 
     if not promos:
         text = "🎁 <b>Промокоды</b>\n\nПромокодов нет."
@@ -148,8 +144,7 @@ async def cb_promo_card(call: CallbackQuery) -> None:
     promo_id = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        repo = PromoCodeRepository(session)
-        promo = await repo.get_by_id(promo_id)
+        promo = await AdminPromoService(session).get_card(promo_id)
 
     if promo is None:
         if call.message:
@@ -240,9 +235,8 @@ async def msg_promo_code(message: Message, state: FSMContext) -> None:
         return
 
     async with async_session_factory() as session:
-        repo = PromoCodeRepository(session)
-        existing = await repo.get_by_code(promo_code)
-        if existing:
+        exists = await AdminPromoService(session).code_exists(promo_code)
+        if exists:
             await message.answer(
                 f"❌ Промокод {code(promo_code)} уже существует. "
                 "Введите другой:",
@@ -331,17 +325,12 @@ async def msg_promo_valid_until(message: Message, state: FSMContext) -> None:
     usage_limit = data.get("usage_limit")
 
     async with async_session_factory() as session:
-        repo = PromoCodeRepository(session)
-        promo = await repo.create(
+        promo = await AdminPromoService(session).create(
+            admin_id=message.from_user.id,
             code=promo_code,
             discount_percent=discount,
             usage_limit=usage_limit,
             valid_until=valid_until,
-        )
-        await AuditLogService(session).log(
-            admin_telegram_id=message.from_user.id,
-            action=AuditAction.SETTINGS_CHANGED,
-            details=f"promo_created: {promo.code} discount={promo.discount_percent}%",
         )
 
     limit_text = usage_limit if usage_limit is not None else "∞"
@@ -366,27 +355,22 @@ async def cb_promo_toggle(call: CallbackQuery) -> None:
     promo_id = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        repo = PromoCodeRepository(session)
-        promo = await repo.get_by_id(promo_id)
-        if promo is None:
-            if call.message:
-                await call.message.edit_text("❌ Промокод не найден.")
-            return
-        new_active = not promo.is_active
-        await repo.set_active(promo_id, new_active)
-
-        await AuditLogService(session).log(
-            admin_telegram_id=call.from_user.id if call.from_user else 0,
-            action=AuditAction.SETTINGS_CHANGED,
-            details=f"promo {'activated' if new_active else 'deactivated'}: {promo.code}",
+        result = await AdminPromoService(session).toggle(
+            admin_id=call.from_user.id if call.from_user else 0,
+            promo_id=promo_id,
         )
 
-    status = "✅ активирован" if new_active else "❌ деактивирован"
-    text = f"Промокод {code(promo.code)} {status}."
+    if result.promo is None or result.new_active is None:
+        if call.message:
+            await call.message.edit_text("❌ Промокод не найден.")
+        return
+
+    status = "✅ активирован" if result.new_active else "❌ деактивирован"
+    text = f"Промокод {code(result.promo.code)} {status}."
     if call.message:
         await call.message.edit_text(
             text, parse_mode="HTML",
-            reply_markup=_promo_card_kb(promo_id, new_active),
+            reply_markup=_promo_card_kb(promo_id, result.new_active),
         )
 
 
@@ -400,20 +384,13 @@ async def cb_promo_delete(call: CallbackQuery) -> None:
     promo_id = int(call.data.split(":")[-1]) if call.data else 0
 
     async with async_session_factory() as session:
-        repo = PromoCodeRepository(session)
-        promo = await repo.get_by_id(promo_id)
-        promo_code_str = promo.code if promo else "?"
-        deleted = await repo.delete(promo_id)
+        result = await AdminPromoService(session).delete(
+            admin_id=call.from_user.id if call.from_user else 0,
+            promo_id=promo_id,
+        )
 
-        if deleted:
-            await AuditLogService(session).log(
-                admin_telegram_id=call.from_user.id if call.from_user else 0,
-                action=AuditAction.SETTINGS_CHANGED,
-                details=f"promo_deleted: {promo_code_str}",
-            )
-
-    if deleted:
-        text = f"🗑 Промокод {code(promo_code_str)} удалён."
+    if result.deleted:
+        text = f"🗑 Промокод {code(result.promo_code)} удалён."
     else:
         text = "❌ Промокод не найден."
 
