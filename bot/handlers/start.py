@@ -20,6 +20,7 @@ from bot.middlewares.admin_check import is_admin
 from bot.services.notification import NotificationService
 from bot.services.profile import UserProfileService
 from bot.services.start import StartService
+from bot.services.user_settings import UserSettingsService
 
 router = Router(name="start")
 
@@ -295,8 +296,7 @@ async def handle_menu_button(message: Message, bot: Bot, state: FSMContext) -> N
             await message.answer(msg, parse_mode="HTML", reply_markup=back_to_menu_kb())
 
         elif callback_data == "u:settings":
-            db_user = await user_repo.get_by_telegram_id(user.id)
-            auto_renew = db_user.auto_renew if db_user else True
+            auto_renew = await UserSettingsService(session).get_auto_renew(user.id)
             await message.answer(
                 "\u2699\ufe0f <b>Настройки</b>\n\n"
                 "Управление вашим аккаунтом:",
