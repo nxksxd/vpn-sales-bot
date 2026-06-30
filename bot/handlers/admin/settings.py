@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+import shlex
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -49,18 +50,25 @@ _XUI_FIELDS = {
 }
 
 
+def _env_line(env_key: str, value: str) -> str:
+    if any(ch in value for ch in ("\n", "\r", "\x00")):
+        raise ValueError("Значение не должно содержать переносы строк или NUL")
+    return f"{env_key}={shlex.quote(value)}\n"
+
+
 def _update_env_file(env_key: str, value: str) -> None:
     """Update a key in the .env file (create if missing)."""
     env_path = BASE_DIR / ".env"
     lines: list[str] = []
     found = False
+    replacement = _env_line(env_key, value)
 
     if env_path.exists():
         lines = env_path.read_text().splitlines(keepends=True)
         new_lines: list[str] = []
         for line in lines:
             if re.match(rf"^{re.escape(env_key)}\s*=", line):
-                new_lines.append(f"{env_key}={value}\n")
+                new_lines.append(replacement)
                 found = True
             else:
                 new_lines.append(line)
@@ -69,7 +77,7 @@ def _update_env_file(env_key: str, value: str) -> None:
     if not found:
         if lines and not lines[-1].endswith("\n"):
             lines.append("\n")
-        lines.append(f"{env_key}={value}\n")
+        lines.append(replacement)
 
     env_path.write_text("".join(lines))
 

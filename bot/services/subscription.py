@@ -112,6 +112,32 @@ def _parse_inbound(inbound: dict | None) -> dict:
     return data
 
 
+async def _cleanup_provisioned_client(
+    xui: XUIClient,
+    inbound_id: int,
+    client_id: str,
+    email: str,
+    reason: str,
+) -> None:
+    """Best-effort rollback for a 3x-ui client created before DB/payment failure."""
+    try:
+        await xui.delete_client(inbound_id, client_id, email=email)
+        logger.warning(
+            "Rolled back provisioned 3X-UI client {} after {}",
+            client_id,
+            reason,
+        )
+    except XuiError as exc:
+        if _is_client_missing(exc):
+            return
+        logger.error(
+            "Failed to roll back provisioned 3X-UI client {} after {}: {}",
+            client_id,
+            reason,
+            exc,
+        )
+
+
 # ── Service ──────────────────────────────────────────────────────────
 
 
@@ -274,83 +300,93 @@ class SubscriptionService:
         )
 
 
-        if plan["rub"] > 0:
-            user_after_debit = await self.user_repo.update_balance(
-                telegram_id,
-                -plan["rub"],
-                allow_negative=False,
+        try:
+            if plan["rub"] > 0:
+                user_after_debit = await self.user_repo.update_balance(
+                    telegram_id,
+                    -plan["rub"],
+                    allow_negative=False,
+                )
+                if user_after_debit is None:
+                    # Race: someone spent the balance between our check and the
+                    # debit. Show the same friendly message.
+                    raise _insufficient_balance_error(user.balance, plan["rub"])
+
+                try:
+                    await self.tx_repo.create(
+                        user_id=telegram_id,
+                        tx_type=TransactionType.PURCHASE,
+                        amount_rub=-plan["rub"],
+                        amount_stars=plan["stars"],
+                        description=(
+                            f"Trial {plan['label']} ({plan_type})"
+                            if is_trial
+                            else f"Подписка {plan['label']} ({plan_type})"
+                        ),
+                        idempotency_key=idempotency_key,
+                        rate_snapshot=str(settings.stars_to_rub_rate),
+                    )
+                except IntegrityError as e:
+                    await self.user_repo.update_balance(telegram_id, plan["rub"])
+                    raise UserFacingError(
+                        "✅ Эта покупка уже была обработана ранее.",
+                        log_detail="idempotency conflict",
+                    ) from e
+            elif idempotency_key:
+                # Free purchase (e.g. trial): record a zero-amount transaction so
+                # the idempotency key prevents repeated activations.
+                try:
+                    await self.tx_repo.create(
+                        user_id=telegram_id,
+                        tx_type=TransactionType.PURCHASE,
+                        amount_rub=0,
+                        amount_stars=0,
+                        description=(
+                            f"Trial {plan['label']} ({plan_type})"
+                            if is_trial
+                            else f"Подписка {plan['label']} ({plan_type})"
+                        ),
+                        idempotency_key=idempotency_key,
+                        rate_snapshot=str(settings.stars_to_rub_rate),
+                    )
+                except IntegrityError as e:
+                    raise UserFacingError(
+                        "✅ Trial уже был активирован.",
+                        log_detail="trial idempotency conflict",
+                    ) from e
+
+            sub = await self.sub_repo.create(
+                user_id=telegram_id,
+                plan_type=plan_type,
+                price_rub=plan["rub"],
+                days=plan["days"],
+                xui_client_id=client_uuid,
+                xui_inbound_id=effective_inbound_id,
+                vless_link=vless_link,
+                traffic_limit_gb=effective_traffic_gb,
+                is_trial=is_trial,
+                sub_id=sub_id,
+                region_code=region_code,
+                promo_code=promo_code,
             )
-            if user_after_debit is None:
-                # Race: someone spent the balance between our check and the
-                # debit. Show the same friendly message.
-                raise _insufficient_balance_error(user.balance, plan["rub"])
 
-            try:
-                await self.tx_repo.create(
-                    user_id=telegram_id,
-                    tx_type=TransactionType.PURCHASE,
-                    amount_rub=-plan["rub"],
-                    amount_stars=plan["stars"],
-                    description=(
-                        f"Trial {plan['label']} ({plan_type})"
-                        if is_trial
-                        else f"Подписка {plan['label']} ({plan_type})"
-                    ),
-                    idempotency_key=idempotency_key,
-                    rate_snapshot=str(settings.stars_to_rub_rate),
-                )
-            except IntegrityError as e:
-                await self.user_repo.update_balance(telegram_id, plan["rub"])
-                raise UserFacingError(
-                    "✅ Эта покупка уже была обработана ранее.",
-                    log_detail="idempotency conflict",
-                ) from e
-        elif idempotency_key:
-            # Free purchase (e.g. trial): record a zero-amount transaction so
-            # the idempotency key prevents repeated activations.
-            try:
-                await self.tx_repo.create(
-                    user_id=telegram_id,
-                    tx_type=TransactionType.PURCHASE,
-                    amount_rub=0,
-                    amount_stars=0,
-                    description=(
-                        f"Trial {plan['label']} ({plan_type})"
-                        if is_trial
-                        else f"Подписка {plan['label']} ({plan_type})"
-                    ),
-                    idempotency_key=idempotency_key,
-                    rate_snapshot=str(settings.stars_to_rub_rate),
-                )
-            except IntegrityError as e:
-                raise UserFacingError(
-                    "✅ Trial уже был активирован.",
-                    log_detail="trial idempotency conflict",
-                ) from e
-
-        sub = await self.sub_repo.create(
-            user_id=telegram_id,
-            plan_type=plan_type,
-            price_rub=plan["rub"],
-            days=plan["days"],
-            xui_client_id=client_uuid,
-            xui_inbound_id=effective_inbound_id,
-            vless_link=vless_link,
-            traffic_limit_gb=effective_traffic_gb,
-            is_trial=is_trial,
-            sub_id=sub_id,
-            region_code=region_code,
-            promo_code=promo_code,
-        )
-
-        await self.key_repo.create(
-            subscription_id=sub.id,
-            user_id=telegram_id,
-            xui_client_id=client_uuid,
-            xui_inbound_id=effective_inbound_id,
-            email=email,
-            vless_link=vless_link,
-        )
+            await self.key_repo.create(
+                subscription_id=sub.id,
+                user_id=telegram_id,
+                xui_client_id=client_uuid,
+                xui_inbound_id=effective_inbound_id,
+                email=email,
+                vless_link=vless_link,
+            )
+        except Exception:
+            await _cleanup_provisioned_client(
+                self.xui,
+                effective_inbound_id,
+                client_uuid,
+                email,
+                "purchase failure",
+            )
+            raise
 
 
         logger.info(

@@ -85,6 +85,8 @@ class Settings(BaseSettings):
     yookassa_secret_key: str = ""
     yookassa_return_url: str = "https://t.me/portalkey_bot"
     yookassa_webhook_port: int = 8080
+    yookassa_webhook_secret: str = ""
+    yookassa_trust_x_forwarded_for: bool = False
 
     # Observability
     sentry_dsn: str = ""  # empty = Sentry disabled

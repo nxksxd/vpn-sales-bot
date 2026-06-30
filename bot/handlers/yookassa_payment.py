@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 from aiogram import F, Router
@@ -178,7 +179,8 @@ async def _do_create_payment(telegram_id: int, amount_rub: int) -> tuple[str, st
     idempotency_key = str(uuid.uuid4())
 
     try:
-        payment = YKPayment.create(
+        payment = await asyncio.to_thread(
+            YKPayment.create,
             {
                 "amount": {
                     "value": f"{amount_rub}.00",

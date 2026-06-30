@@ -2,6 +2,7 @@
 
 import tempfile
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -46,6 +47,40 @@ async def test_yookassa_unavailable_shows_error():
         mock_settings.yookassa_shop_id = "123456"
         mock_settings.yookassa_secret_key = "test_key"
         assert _yookassa_available() is True
+
+
+def test_webhook_ignores_x_forwarded_for_by_default(monkeypatch):
+    """Spoofed X-Forwarded-For must not bypass direct peer IP checks."""
+    from bot.services import yookassa_webhook
+
+    class Request:
+        headers = {"X-Forwarded-For": "185.71.76.1"}
+        remote = "1.2.3.4"
+
+    monkeypatch.setattr(
+        yookassa_webhook.settings,
+        "yookassa_trust_x_forwarded_for",
+        False,
+    )
+
+    assert yookassa_webhook._request_client_ip(cast(Any, Request())) == "1.2.3.4"
+
+
+def test_webhook_uses_x_forwarded_for_only_when_enabled(monkeypatch):
+    """Forwarded IP is accepted only behind an explicitly trusted proxy."""
+    from bot.services import yookassa_webhook
+
+    class Request:
+        headers = {"X-Forwarded-For": "185.71.76.1, 10.0.0.2"}
+        remote = "127.0.0.1"
+
+    monkeypatch.setattr(
+        yookassa_webhook.settings,
+        "yookassa_trust_x_forwarded_for",
+        True,
+    )
+
+    assert yookassa_webhook._request_client_ip(cast(Any, Request())) == "185.71.76.1"
 
 
 @pytest.mark.asyncio

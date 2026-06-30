@@ -48,14 +48,19 @@ def _is_trusted_ip(ip: str) -> bool:
     return False
 
 
+def _request_client_ip(request: web.Request) -> str:
+    if settings.yookassa_trust_x_forwarded_for:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.remote or ""
+
+
 async def handle_webhook(request: web.Request) -> web.Response:
     """Process incoming YooKassa webhook notification."""
-    # IP verification
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
-    else:
-        client_ip = request.remote or ""
+    # IP verification. X-Forwarded-For is intentionally ignored by default:
+    # only enable it when a trusted reverse proxy is the sole public entrypoint.
+    client_ip = _request_client_ip(request)
 
     if not _is_trusted_ip(client_ip):
         logger.warning("YooKassa webhook from untrusted IP: {}", client_ip)
@@ -292,7 +297,10 @@ async def start_webhook_server() -> web.AppRunner | None:
         return None
 
     app = web.Application()
-    app.router.add_post("/yookassa/webhook", handle_webhook)
+    webhook_path = "/yookassa/webhook"
+    if settings.yookassa_webhook_secret:
+        webhook_path = f"{webhook_path}/{settings.yookassa_webhook_secret}"
+    app.router.add_post(webhook_path, handle_webhook)
     # Health check endpoint
     app.router.add_get("/health", _health_check)
 
