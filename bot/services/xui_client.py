@@ -80,8 +80,9 @@ class XUIClient:
         if self._session is None or self._session.closed:
             self._cookie_jar = aiohttp.CookieJar(unsafe=True)
             timeout = aiohttp.ClientTimeout(total=30)
+            connector = aiohttp.TCPConnector(ssl=False)
             self._session = aiohttp.ClientSession(
-                cookie_jar=self._cookie_jar, timeout=timeout
+                cookie_jar=self._cookie_jar, timeout=timeout, connector=connector
             )
         return self._session
 
